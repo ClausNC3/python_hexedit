@@ -232,6 +232,104 @@ class SearchWindow(BaseWindow):
         """Cancel the operation."""
         self.window.destroy()
 
+class NewFileWindow(BaseWindow):
+    """Window for creating a new file with specified size."""
+
+    def __init__(self, parent, new_file_callback: Callable[[int], None]):
+        """Instantiate the class.
+
+        Args:
+            parent:
+                Parent tk class.
+
+            new_file_callback:
+                Callback to create the new file with the given size.
+
+        """
+        self.parent = parent
+        self.new_file_callback = new_file_callback
+
+        self.window = tk.Toplevel(self.parent)
+        self.window.title(f"New File")
+        self.window.resizable(0, 0)
+        self.window.transient(self.parent)
+        self.window.grab_set()
+
+        label_size = tk.Label(self.window,
+                                   text = "Size: ",
+                                   anchor = tk.W)
+
+        self.entry_size = tk.Entry(self.window, width = 20)
+        self.entry_size.insert(0, "256")  # Default size
+
+        self.unit_type = ttk.Combobox(self.window, values = ["Bytes", "Kilobytes", "Megabytes"], state = "readonly", width = 15)
+        self.unit_type.current(0)  # Default to Bytes
+
+        label_size.grid(row = 0, column = 0, padx = 5, pady = 5, sticky = tk.W)
+        self.entry_size.grid(row = 0, column = 1, padx = (5, 2), pady = 5, sticky = tk.W)
+        self.unit_type.grid(row = 0, column = 2, padx = (2, 5), pady = 5, sticky = tk.W)
+
+        button_frame = tk.Frame(self.window)
+
+        self.button_ok = tk.Button(button_frame,
+                        text = "OK",
+                        command = self.submit, width = 7)
+        self.button_cancel = tk.Button(button_frame,
+                        text = "Cancel",
+                        command = self.cancel, width = 7)
+
+        self.button_cancel.pack(side = tk.RIGHT)
+        self.button_ok.pack(side = tk.RIGHT, padx = 10)
+        button_frame.grid(row = 1, column = 2, padx = 5, pady = 12, sticky = tk.E)
+
+        self.window.bind('<Return>', self.submit)
+        self.window.bind('<Escape>', self.cancel)
+        self.window.focus_force()
+        self.entry_size.focus()
+        self.entry_size.select_range(0, tk.END)
+
+        self.center_window(self.parent)
+
+    def submit(self, event = None) -> None:
+        try:
+            size_str = self.entry_size.get().strip()
+
+            # Parse size - support hex (0x prefix) and decimal
+            if size_str.startswith('0x') or size_str.startswith('0X'):
+                size = int(size_str, 16)
+            else:
+                size = int(size_str)
+
+            if size <= 0:
+                raise ValueError("Size must be greater than 0")
+
+            # Convert to bytes based on selected unit
+            unit_index = self.unit_type.current()
+            if unit_index == 0:  # Bytes
+                size_in_bytes = size
+            elif unit_index == 1:  # Kilobytes
+                size_in_bytes = size * 1024
+            elif unit_index == 2:  # Megabytes
+                size_in_bytes = size * 1024 * 1024
+            else:
+                raise ValueError("Invalid unit selected")
+
+            if size_in_bytes > 1024 * 1024 * 100:  # 100 MB limit
+                raise ValueError("Size must be less than 100 MB")
+
+            self.new_file_callback(size_in_bytes)
+            self.window.destroy()
+        except ValueError as e:
+            self.button_ok.config(state = tk.DISABLED)
+            self.button_cancel.config(state = tk.DISABLED)
+            messagebox.showerror("Error", f"Invalid size: {str(e)}")
+            self.button_ok.config(state = tk.NORMAL)
+            self.button_cancel.config(state = tk.NORMAL)
+
+    def cancel(self, event = None) -> None:
+        """Cancel the operation."""
+        self.window.destroy()
+
 class AboutWindow(BaseWindow):
     """The "about" window."""
     

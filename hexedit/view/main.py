@@ -77,6 +77,7 @@ class View(tk.Tk):
         self.menubar = MenuBar(self.root, {
             MenuBar.Events.REFRESH:                 self.refresh,
             MenuBar.Events.GOTO:                    self.show_goto,
+            MenuBar.Events.NEW:                     self.show_new,
             MenuBar.Events.OPEN:                    self.show_open,
             MenuBar.Events.SAVE:                    self.save_file,
             MenuBar.Events.SAVE_AS:                 self.save_file_as,
@@ -105,6 +106,7 @@ class View(tk.Tk):
         self.root.bind('<Control-f>', self.show_search)
         self.root.bind('<F3>', self.find_next)
         self.root.bind('<Shift-F3>', self.find_prev)
+        self.root.bind('<Control-n>', self.show_new)
         self.root.bind('<Control-o>', self.show_open)
         self.root.bind('<Control-s>', self.save_file)
         self.root.bind('<Control-Shift-S>', self.save_file_as)
@@ -145,6 +147,10 @@ class View(tk.Tk):
             self.callbacks[Events.GOTO](offset)
         except ValueError as e:
             self.display_error(f"Unable to jump to offset {answer}:\n({str(e)})")
+
+    def show_new(self, event = None) -> None:
+        """Show the 'New file' window."""
+        NewFileWindow(self.root, self.callbacks[Events.NEW])
 
     def show_open(self, event = None) -> None:
         """Show the 'Open file' window."""

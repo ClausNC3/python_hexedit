@@ -96,6 +96,7 @@ class Application():
         callbacks = {
             v.Events.REFRESH:                self.cb_refresh,
             v.Events.GOTO:                   self.cb_goto,
+            v.Events.NEW:                    self.cb_new,
             v.Events.OPEN:                   self.cb_open,
             v.Events.SAVE:                   self.cb_save,
             v.Events.SAVE_AS:                self.cb_save_as,
@@ -257,6 +258,36 @@ class Application():
         self.view.make_visible(offset, highlight = True)
         self.view.set_status(f"Jumping to offset {hex(offset)} ({offset})")
 
+    def cb_new(self, size: int) -> None:
+        """Callback for an event where the user wants to create a new file.
+
+        Args:
+            size: Size of the new file in bytes
+        """
+        try:
+            # Create a new buffer filled with 0x00
+            self.file_buffer = bytearray(size)
+
+            # Create a temporary file path (will need Save As to get actual name)
+            self.current_file_path = None
+
+            # Clear undo stack for new file
+            self.undo_stack = []
+
+            # Populate the view with the new buffer
+            def done_loading_hex(is_success: bool) -> None:
+                if is_success:
+                    self.view.set_status(f"New file created with {size} bytes")
+                    self.view.is_file_open = True
+                    self.view.menubar.toggle_loaded_file_commands(enable=True)
+
+            self.view.reset()
+            self.view.populate_hex_view(self.file_buffer, done_loading_hex)
+            self.view.set_current_file_path("New File")
+        except Exception as e:
+            self.view.display_error(f"Failed to create new file:\n{str(e)}")
+            self.view.set_status("New file creation failed")
+
     def cb_open(self, path: str) -> None:
         """Callback for an event where the user wants to open a new file."""
         self.view.reset()
@@ -370,7 +401,12 @@ class Application():
 
     def cb_save(self) -> None:
         """Callback for saving the file with modifications."""
-        if not hasattr(self, 'file_buffer') or self.current_file_path is None:
+        if not hasattr(self, 'file_buffer'):
+            return
+
+        # If this is a new file without a path, prompt for Save As
+        if self.current_file_path is None:
+            self.view.save_file_as()
             return
 
         try:

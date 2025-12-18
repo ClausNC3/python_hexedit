@@ -39,6 +39,9 @@ class Events(enum.Enum):
     # User wants to jump to offset
     GOTO               = enum.auto()
 
+    # User wants to create a new file
+    NEW                = enum.auto()
+
     # User wants to open file
     OPEN               = enum.auto()
 

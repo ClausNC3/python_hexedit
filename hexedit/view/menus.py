@@ -57,6 +57,9 @@ class MenuBar(tk.Menu):
         # User wants to jump to offset
         GOTO                    = enum.auto()
 
+        # User wants to create a new file
+        NEW                     = enum.auto()
+
         # User wants to open file
         OPEN                    = enum.auto()
 
@@ -106,6 +109,8 @@ class MenuBar(tk.Menu):
             menu.add_command(**kwargs)
 
         filemenu = tk.Menu(self, tearoff=0)
+        add_command(filemenu, False, label = "New...",
+                    command = lambda: self.callbacks[self.Events.NEW](None), accelerator = "Ctrl+N")
         add_command(filemenu, False, label = "Open...",
                     command = lambda: self.callbacks[self.Events.OPEN](None), accelerator = "Ctrl+O")
         add_command(filemenu, True, label = "Save",
