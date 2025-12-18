@@ -99,6 +99,7 @@ class Application():
             v.Events.OPEN:                   self.cb_open,
             v.Events.SAVE:                   self.cb_save,
             v.Events.SAVE_AS:                self.cb_save_as,
+            v.Events.UNDO:                   self.cb_undo,
             v.Events.GET_CWD:                self.cb_get_cwd,
             v.Events.CANCEL_LOAD:            self.cb_cancel_load,
             v.Events.SEARCH:                 self.cb_search,
@@ -110,6 +111,7 @@ class Application():
         }
 
         self.current_file_path = None
+        self.undo_stack = []  # Stack to hold undo operations
 
         self.view = v.View(title = APP_NAME, callbacks = callbacks)
 
@@ -327,6 +329,10 @@ class Application():
             if byte_value < 0 or byte_value > 255:
                 return False
 
+            # Save old value for undo
+            old_value = self.file_buffer[offset]
+            self.undo_stack.append((offset, old_value))
+
             # Update buffer
             self.file_buffer[offset] = byte_value
             return True
@@ -351,6 +357,10 @@ class Application():
             byte_value = ord(ascii_char)
             if byte_value > 255:
                 return False
+
+            # Save old value for undo
+            old_value = self.file_buffer[offset]
+            self.undo_stack.append((offset, old_value))
 
             # Update buffer
             self.file_buffer[offset] = byte_value
@@ -412,3 +422,26 @@ class Application():
         except Exception as e:
             self.view.display_error(f"Failed to save file:\n{str(e)}")
             self.view.set_status("Save As failed")
+
+    def cb_undo(self) -> None:
+        """Callback for undoing the last change."""
+        if not hasattr(self, 'file_buffer') or not self.undo_stack:
+            self.view.set_status("Nothing to undo")
+            return
+
+        try:
+            # Pop the last change from the undo stack
+            offset, old_value = self.undo_stack.pop()
+
+            # Restore the old value in the buffer
+            self.file_buffer[offset] = old_value
+
+            # Update the view to reflect the change
+            self.view.reset()
+            self.view.populate_hex_view(self.file_buffer, lambda success: None)
+            self.view.make_visible(offset, highlight=True)
+
+            self.view.set_status(f"Undid change at offset {hex(offset)}")
+        except Exception as e:
+            self.view.display_error(f"Failed to undo:\n{str(e)}")
+            self.view.set_status("Undo failed")

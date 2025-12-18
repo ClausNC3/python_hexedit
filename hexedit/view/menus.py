@@ -66,6 +66,9 @@ class MenuBar(tk.Menu):
         # User wants to save the file with a new name
         SAVE_AS                 = enum.auto()
 
+        # User wants to undo last change
+        UNDO                    = enum.auto()
+
         # User wants to search file
         SEARCH                  = enum.auto()
 
@@ -113,6 +116,11 @@ class MenuBar(tk.Menu):
         add_command(filemenu, False, label = "Exit",
                     command = parent.quit, accelerator = "Alt+F4")
         self.add_cascade(label = "File", menu = filemenu)
+
+        editmenu = tk.Menu(self, tearoff = 0)
+        add_command(editmenu, True, label = "Undo",
+                    command = lambda: self.callbacks[self.Events.UNDO](None), accelerator = "Ctrl+Z")
+        self.add_cascade(label = "Edit", menu = editmenu)
 
         searchmenu = tk.Menu(self, tearoff = 0)
         add_command(searchmenu, True, label = "Find...", 

@@ -71,3 +71,6 @@ class Events(enum.Enum):
 
     # User wants to save the file with a new name
     SAVE_AS            = enum.auto()
+
+    # User wants to undo last change
+    UNDO               = enum.auto()

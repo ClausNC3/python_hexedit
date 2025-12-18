@@ -80,6 +80,7 @@ class View(tk.Tk):
             MenuBar.Events.OPEN:                    self.show_open,
             MenuBar.Events.SAVE:                    self.save_file,
             MenuBar.Events.SAVE_AS:                 self.save_file_as,
+            MenuBar.Events.UNDO:                    self.undo,
             MenuBar.Events.SEARCH:                  self.show_search,
             MenuBar.Events.FIND_NEXT:               self.find_next,
             MenuBar.Events.FIND_PREV:               self.find_prev,
@@ -107,6 +108,7 @@ class View(tk.Tk):
         self.root.bind('<Control-o>', self.show_open)
         self.root.bind('<Control-s>', self.save_file)
         self.root.bind('<Control-Shift-S>', self.save_file_as)
+        self.root.bind('<Control-z>', self.undo)
 
         # Delegate a few interface functions directly to internal implementation
         self.populate_hex_view = self.hex_view.populate_hex_view
@@ -192,6 +194,13 @@ class View(tk.Tk):
             return
 
         self.callbacks[Events.FIND_PREV]()
+
+    def undo(self, event = None) -> None:
+        """Undo the last change."""
+        if not self.is_file_open:
+            return
+
+        self.callbacks[Events.UNDO]()
 
     def show_about(self, event = None) -> None:
         """Show the 'About' window."""
