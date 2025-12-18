@@ -118,7 +118,7 @@ class HexAreaView():
         self.textbox_hex.tag_config(TAG_HIGHLIGHT_CUSTOM2, background='DarkSeaGreen1')
         self.textbox_hex.tag_config(TAG_HIGHLIGHT_CUSTOM3, background='thistle1')
         self.textbox_hex.tag_config(TAG_HIGHLIGHT, background='gold3') # Must be last of highlight tags
-        self.textbox_hex.tag_config(TAG_GOTO, background='lightcyan')
+        self.textbox_hex.tag_config(TAG_GOTO, background='CornflowerBlue')
         self.textbox_hex.tag_config(TAG_SELECTION, background='lightgray')
 
         self.textbox_ascii = tk.Text(self.main_frame, width = self.BYTES_PER_ROW, padx = 10, wrap = tk.NONE, bd = 0)
@@ -127,7 +127,7 @@ class HexAreaView():
         self.textbox_ascii.tag_config(TAG_HIGHLIGHT_CUSTOM2, background='DarkSeaGreen1')
         self.textbox_ascii.tag_config(TAG_HIGHLIGHT_CUSTOM3, background='thistle1')
         self.textbox_ascii.tag_config(TAG_HIGHLIGHT, background='gold3') # Must be last of highlight tags
-        self.textbox_ascii.tag_config(TAG_GOTO, background='lightcyan')
+        self.textbox_ascii.tag_config(TAG_GOTO, background='CornflowerBlue')
         self.textbox_ascii.tag_config(TAG_SELECTION, background='lightgray')
 
         self.textboxes = [self.textbox_address, self.textbox_hex, self.textbox_ascii]
@@ -464,7 +464,14 @@ class HexAreaView():
             chars_per_byte = 2
             format_pad_len = 8 * chars_per_byte
 
-            chunk_size = 0x1000
+            # Increased chunk size for faster loading (64KB instead of 4KB)
+            chunk_size = 0x10000
+
+            # Pre-create ASCII translation table for better performance
+            ascii_chars = bytearray(range(256))
+            for i in range(256):
+                if i < 32 or i > 127:
+                    ascii_chars[i] = ord('.')
 
             for i, chunk_external in enumerate(chunker(byte_arr, chunk_size)):
                 if self.abort_load:
@@ -477,14 +484,15 @@ class HexAreaView():
                 base_addr = chunk_size * i
 
                 for j, chunk_16b in enumerate(chunker(chunk_external, self.BYTES_PER_ROW)):
-                    
+
                     if self.abort_load:
                         break
 
                     hex_format = chunk_16b.hex(" ")
                     textbox_hex_content.write(hex_format + "\n")
 
-                    ascii_format = "".join([chr(c) if 32 <= c <= 127 else "." for c in chunk_16b])
+                    # Use translate for faster ASCII conversion
+                    ascii_format = chunk_16b.translate(ascii_chars).decode('ascii')
                     textbox_ascii_content.write(ascii_format + "\n")
 
                     textbox_address_content.write(format(base_addr + (j * self.BYTES_PER_ROW), 'X').rjust(format_pad_len, '0') + "\n")
@@ -535,6 +543,12 @@ class HexAreaView():
         # Keep hex and ASCII textboxes editable
         self.textbox_hex.config(state = tk.NORMAL)
         self.textbox_ascii.config(state = tk.NORMAL)
+
+        # Set cursor to beginning of hex textbox
+        if is_success:
+            self.textbox_hex.mark_set(tk.INSERT, "1.0")
+            self.textbox_hex.focus_set()
+
         self.hex_content_done_cb(is_success)
         self.hex_content_done_cb = None
         self.hex_thread_queue = None
