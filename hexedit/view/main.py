@@ -148,15 +148,48 @@ class View(tk.Tk):
         except ValueError as e:
             self.display_error(f"Unable to jump to offset {answer}:\n({str(e)})")
 
+    def check_save_modified(self) -> bool:
+        """Check if file is modified and ask user to save.
+
+        Returns:
+            True if it's safe to continue (saved, not modified, or user chose No)
+            False if user chose Cancel
+        """
+        # Get modified status from application via callback
+        if hasattr(self.callbacks[Events.SAVE], '__self__'):
+            app = self.callbacks[Events.SAVE].__self__
+            if hasattr(app, 'is_modified') and app.is_modified:
+                # Get current file name
+                filename = "New File" if app.current_file_path is None else str(app.current_file_path)
+
+                response = messagebox.askyesnocancel(
+                    "Save Changes?",
+                    f"{filename} was modified.\nSave now?"
+                )
+
+                if response is None:  # Cancel
+                    return False
+                elif response:  # Yes
+                    self.callbacks[Events.SAVE]()
+                    return True
+                else:  # No
+                    return True
+        return True
+
     def show_new(self, event = None) -> None:
         """Show the 'New file' window."""
+        if not self.check_save_modified():
+            return
         NewFileWindow(self.root, self.callbacks[Events.NEW])
 
     def show_open(self, event = None) -> None:
         """Show the 'Open file' window."""
+        if not self.check_save_modified():
+            return
         cwd = self.callbacks[Events.GET_CWD]()
         filename = filedialog.askopenfilename(filetypes=[('All files','*.*')], initialdir=cwd)
-        self.callbacks[Events.OPEN](filename)
+        if filename:
+            self.callbacks[Events.OPEN](filename)
 
     def save_file(self, event = None) -> None:
         """Save the current file with modifications."""

@@ -113,6 +113,7 @@ class Application():
 
         self.current_file_path = None
         self.undo_stack = []  # Stack to hold undo operations
+        self.is_modified = False  # Track if file has been modified
 
         self.view = v.View(title = APP_NAME, callbacks = callbacks)
 
@@ -168,6 +169,7 @@ class Application():
         self.file_mmap = utils.memory_map(path_file)
         # Create a mutable buffer from the file
         self.file_buffer = bytearray(self.file_mmap)
+        self.is_modified = False
         self.view.populate_hex_view(self.file_mmap, done_loading_hex)
     
     def _finalize_load(self) -> None:
@@ -273,6 +275,7 @@ class Application():
 
             # Clear undo stack for new file
             self.undo_stack = []
+            self.is_modified = False
 
             # Populate the view with the new buffer
             def done_loading_hex(is_success: bool) -> None:
@@ -366,6 +369,7 @@ class Application():
 
             # Update buffer
             self.file_buffer[offset] = byte_value
+            self.is_modified = True
             return True
         except (ValueError, IndexError):
             return False
@@ -395,6 +399,7 @@ class Application():
 
             # Update buffer
             self.file_buffer[offset] = byte_value
+            self.is_modified = True
             return True
         except (ValueError, IndexError):
             return False
@@ -422,6 +427,7 @@ class Application():
             # Reopen the file as memory map
             self.file_mmap = utils.memory_map(self.current_file_path)
 
+            self.is_modified = False
             self.view.set_status(f"Saved {len(self.file_buffer)} bytes to {self.current_file_path}")
         except Exception as e:
             self.view.display_error(f"Failed to save file:\n{str(e)}")
@@ -454,6 +460,7 @@ class Application():
 
             # Update the view with new file path
             self.view.set_current_file_path(self.current_file_path)
+            self.is_modified = False
             self.view.set_status(f"Saved {len(self.file_buffer)} bytes to {self.current_file_path}")
         except Exception as e:
             self.view.display_error(f"Failed to save file:\n{str(e)}")
@@ -476,6 +483,10 @@ class Application():
             self.view.reset()
             self.view.populate_hex_view(self.file_buffer, lambda success: None)
             self.view.make_visible(offset, highlight=True)
+
+            # If undo stack is empty, file is no longer modified
+            if not self.undo_stack:
+                self.is_modified = False
 
             self.view.set_status(f"Undid change at offset {hex(offset)}")
         except Exception as e:

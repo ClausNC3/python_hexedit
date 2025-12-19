@@ -29,6 +29,7 @@ from functools import partial
 
 import tkinter as tk
 import enum
+import importlib.resources
 from ..common import *
 
 
@@ -104,17 +105,87 @@ class MenuBar(tk.Menu):
 
         self.commands_require_file = {}
 
+        # Create icons for menu items
+        # Simple new icon
+        self.icon_new = tk.PhotoImage(width=16, height=16)
+        # Hvid fyld (dokumentets indre)
+        self.icon_new.put("#FFFFFF", to=(3, 1, 11, 3))     # Toppen af dokumentet
+        self.icon_new.put("#FFFFFF", to=(3, 3, 13, 14))    # Bunden af dokumentet
+        # Hovedlinjer (sort)
+        self.icon_new.put("#000000", to=(2, 0, 9, 1))      # Top kant
+        self.icon_new.put("#000000", to=(2, 0, 3, 15))     # Venstre kant
+        self.icon_new.put("#000000", to=(13, 4, 14, 14))   # Højre kant
+        self.icon_new.put("#000000", to=(3, 14, 14, 15))   # Bund kant
+        self.icon_new.put("#000000", to=(13, 4, 10, 5))    # Fold bund
+        self.icon_new.put("#000000", to=(9, 0, 10, 5))     # Fold venstre
+        self.icon_new.put("#000000", to=(10, 1, 11, 2))    # Diagonal 1
+        self.icon_new.put("#000000", to=(11, 2, 12, 3))    # Diagonal 2
+        self.icon_new.put("#000000", to=(12, 3, 13, 4))    # Diagonal 3
+        
+        # Simple open icon
+        self.icon_open = tk.PhotoImage(width=16, height=16)
+        # Mappe fyld (gul/beige for mappe-look)
+        self.icon_open.put("#F0C050", to=(1, 2, 13, 5))     # Mappe top fyld
+        self.icon_open.put("#E8B840", to=(3, 5, 14, 9))     # Åbning fyld (lidt mørkere)
+        self.icon_open.put("#F0C050", to=(2, 9, 13, 14))    # Mappe bund fyld
+        # Highlight (lysere kant for 3D effekt)
+        self.icon_open.put("#F8D878", to=(1, 1, 2, 14))     # Venstre indre highlight
+        self.icon_open.put("#F8D878", to=(2, 1, 6, 2))      # Tab indre highlight
+        # Hovedlinjer (sort)
+        self.icon_open.put("#000000", to=(1, 0, 6, 1))      # Tab top
+        self.icon_open.put("#000000", to=(0, 1, 1, 14))     # Venstre kant
+        self.icon_open.put("#000000", to=(6, 1, 7, 2))      # Tab højre side
+        self.icon_open.put("#000000", to=(7, 2, 13, 3))     # Top kant højre
+        self.icon_open.put("#000000", to=(13, 3, 14, 4))    # Højre top hjørne
+        self.icon_open.put("#000000", to=(3, 4, 14, 5))     # Åbning top kant
+        self.icon_open.put("#000000", to=(14, 5, 15, 9))    # Åbning højre kant
+        self.icon_open.put("#000000", to=(13, 9, 14, 14))   # Højre kant bund
+        self.icon_open.put("#000000", to=(1, 14, 13, 15))   # Bund kant
+        self.icon_open.put("#000000", to=(1, 9, 2, 14))     # Venstre kant bund
+        self.icon_open.put("#000000", to=(2, 5, 3, 9))      # Indre venstre kant
+
+        # Simple save icon
+        self.icon_save = tk.PhotoImage(width=16, height=16)
+        # Diskette fyld (blå)
+        self.icon_save.put("#4040A0", to=(2, 2, 12, 3))     # Diskette krop
+        self.icon_save.put("#4040A0", to=(2, 3, 13, 13))     # Diskette krop
+        # Label fyld (hvid)
+        self.icon_save.put("#FFFFFF", to=(4, 8, 11, 13))    # Label fyld
+        # Hovedlinjer (sort) - ydre kant
+        self.icon_save.put("#000000", to=(1, 1, 11, 2))     # Top kant
+        self.icon_save.put("#000000", to=(1, 2, 2, 14))     # Venstre kant
+        self.icon_save.put("#000000", to=(13, 4, 14, 14))   # Højre kant
+        self.icon_save.put("#000000", to=(2, 13, 14, 14))   # Bund kant
+        # Diagonal hjørne (top højre)
+        self.icon_save.put("#000000", to=(10, 1, 11, 2))    # Diagonal 1
+        self.icon_save.put("#000000", to=(11, 2, 12, 3))    # Diagonal 2
+        self.icon_save.put("#000000", to=(12, 3, 13, 4))    # Diagonal 3
+        # Label område (bund)
+        self.icon_save.put("#000000", to=(3, 7, 12, 8))     # Label top kant
+        self.icon_save.put("#000000", to=(3, 8, 4, 13))     # Label venstre kant
+        self.icon_save.put("#000000", to=(11, 8, 12, 13))   # Label højre kant
+        # Metal shutter (top)
+        self.icon_save.put("#000000", to=(4, 1, 5, 4))      # Shutter venstre
+        self.icon_save.put("#000000", to=(9, 1, 10, 4))     # Shutter højre
+        self.icon_save.put("#000000", to=(4, 4, 10, 5))     # Shutter bund
+        # Metal shutter fyld (sølv)
+        self.icon_save.put("#C0C0C0", to=(5, 2, 9, 4))      # Shutter fyld
+        self.icon_save.put("#A0A0A0", to=(7, 2, 8, 4))      # Shutter sliding hole
+        
         def add_command(menu, requires_file: bool, **kwargs) -> None:
             self.commands_require_file[(menu, kwargs['label'])] = requires_file
             menu.add_command(**kwargs)
 
         filemenu = tk.Menu(self, tearoff=0)
         add_command(filemenu, False, label = "New...",
-                    command = lambda: self.callbacks[self.Events.NEW](None), accelerator = "Ctrl+N")
+                    command = lambda: self.callbacks[self.Events.NEW](None), accelerator = "Ctrl+N",
+                    image = self.icon_new, compound = tk.LEFT)
         add_command(filemenu, False, label = "Open...",
-                    command = lambda: self.callbacks[self.Events.OPEN](None), accelerator = "Ctrl+O")
+                    command = lambda: self.callbacks[self.Events.OPEN](None), accelerator = "Ctrl+O",
+                    image = self.icon_open, compound = tk.LEFT)
         add_command(filemenu, True, label = "Save",
-                    command = lambda: self.callbacks[self.Events.SAVE](None), accelerator = "Ctrl+S")
+                    command = lambda: self.callbacks[self.Events.SAVE](None), accelerator = "Ctrl+S",
+                    image = self.icon_save, compound = tk.LEFT)
         add_command(filemenu, True, label = "Save As...",
                     command = lambda: self.callbacks[self.Events.SAVE_AS](None), accelerator = "Ctrl+Shift+S")
         filemenu.add_separator()
