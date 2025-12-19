@@ -278,7 +278,10 @@ class HexAreaView():
 
             # Allow navigation keys and backspace, and ignore F-keys and Control combinations
             if (event.keysym in ['Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Prior', 'Next',
-                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5'] or
+                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5',
+                                'Control_L', 'Control_R', 'Alt_L', 'Alt_R', 'Shift_L', 'Shift_R',
+                                'Win_L', 'Win_R', 'Super_L', 'Super_R', 'Caps_Lock', 'Num_Lock',
+                                'Scroll_Lock', 'Escape', 'Insert', 'Pause', 'Print'] or
                 event.keysym.startswith('F') or
                 (event.state & 0x4)):  # Control key pressed
                 return None
@@ -360,7 +363,10 @@ class HexAreaView():
 
             # Allow navigation keys and ignore F-keys and Control combinations
             if (event.keysym in ['Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Prior', 'Next',
-                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5'] or
+                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5',
+                                'Control_L', 'Control_R', 'Alt_L', 'Alt_R', 'Shift_L', 'Shift_R',
+                                'Win_L', 'Win_R', 'Super_L', 'Super_R', 'Caps_Lock', 'Num_Lock',
+                                'Scroll_Lock', 'Escape', 'Insert', 'Pause', 'Print'] or
                 event.keysym.startswith('F') or
                 (event.state & 0x4)):  # Control key pressed
                 return None
@@ -390,7 +396,7 @@ class HexAreaView():
                 if self.callbacks[Events.ASCII_MODIFIED](offset, char):
                     # Update hex view
                     byte_val = ord(char)
-                    hex_str = f"{byte_val:02x}"
+                    hex_str = f"{byte_val:02X}"
 
                     start_col = col * self.REPR_CHARS_PER_BYTE_HEX
                     hex_pos_start = f"{line}.{start_col}"
@@ -488,7 +494,7 @@ class HexAreaView():
                     if self.abort_load:
                         break
 
-                    hex_format = chunk_16b.hex(" ")
+                    hex_format = chunk_16b.hex(" ").upper()
                     textbox_hex_content.write(hex_format + "\n")
 
                     # Use translate for faster ASCII conversion
@@ -539,6 +545,17 @@ class HexAreaView():
             self.callbacks[Events.SHOW_ERROR](f"Error: {str(e)}")
 
     def _cleanup_hex_content(self, is_success: bool) -> None:
+        # Remove trailing newline from all textboxes if present
+        if is_success:
+            # Remove last character if it's a newline
+            for textbox in [self.textbox_address, self.textbox_hex, self.textbox_ascii]:
+                content_end = textbox.index(tk.END)
+                # tk.END is always one past the last character
+                last_char_index = textbox.index(f"{tk.END}-1c")
+                last_char = textbox.get(last_char_index, tk.END)
+                if last_char == '\n':
+                    textbox.delete(last_char_index, tk.END)
+
         self.textbox_address.config(state = tk.DISABLED)
         # Keep hex and ASCII textboxes editable
         self.textbox_hex.config(state = tk.NORMAL)
