@@ -754,8 +754,18 @@ class HexAreaView():
         if offset is None:
             return
 
+        # Validate offset is non-negative
+        if offset < 0:
+            return
+
         location = self._offset_to_line_column(self.REPR_CHARS_PER_BYTE_HEX, offset)
-        self.textbox_hex.see(location)
+
+        # Verify the location exists in the textbox before trying to see it
+        try:
+            self.textbox_hex.see(location)
+        except tk.TclError:
+            # Offset is out of bounds, silently return
+            return
 
         if highlight:
             self.textbox_hex.tag_add(TAG_GOTO, location, f"{location}+{(length * self.REPR_CHARS_PER_BYTE_HEX) - 1}c")
