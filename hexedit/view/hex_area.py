@@ -191,27 +191,79 @@ class HexAreaView():
         """Highlight HEX view upon selection of ASCII view."""
         self.textbox_ascii.tag_remove(TAG_SELECTION, "1.0", tk.END)
         self.textbox_hex.tag_remove(TAG_SELECTION, "1.0", tk.END)
+        has_selection = False
         try:
             ascii_start_line, ascii_start_char = map(int, self.textbox_ascii.index(tk.SEL_FIRST).split("."))
             ascii_end_line,   ascii_end_char   = map(int, self.textbox_ascii.index(tk.SEL_LAST).split("."))
             hex_start = f"{ascii_start_line}.{ascii_start_char * self.REPR_CHARS_PER_BYTE_HEX}"
             hex_end   = f"{ascii_end_line}.{( (ascii_end_char - 1) * self.REPR_CHARS_PER_BYTE_HEX) + self.REPR_CHARS_PER_BYTE_HEX - 1}"
             self.textbox_hex.tag_add(TAG_SELECTION, hex_start, hex_end)
+            has_selection = True
         except Exception:
             pass
+        finally:
+            # Update menu state
+            self.root.update_clear_block_menu(has_selection)
             
     def _on_hex_selection(self, event) -> None:
         """Highlight ASCII view upon selection of HEX view."""
         self.textbox_ascii.tag_remove(TAG_SELECTION, "1.0", tk.END)
         self.textbox_hex.tag_remove(TAG_SELECTION, "1.0", tk.END)
+        has_selection = False
         try:
             hex_start_line, hex_start_char = map(int, self.textbox_hex.index(tk.SEL_FIRST).split("."))
             hex_end_line,   hex_end_char   = map(int, self.textbox_hex.index(tk.SEL_LAST).split("."))
             ascii_start = f"{hex_start_line}.{hex_start_char // self.REPR_CHARS_PER_BYTE_HEX}"
             ascii_end   = f"{hex_end_line}.{( (hex_end_char - 1) // self.REPR_CHARS_PER_BYTE_HEX) + 1}"
             self.textbox_ascii.tag_add(TAG_SELECTION, ascii_start, ascii_end)
+            has_selection = True
         except Exception:
             pass
+        finally:
+            # Update menu state
+            self.root.update_clear_block_menu(has_selection)
+
+    def _get_selection_range(self) -> tuple:
+        """Get the byte offset range of current selection.
+
+        Returns:
+            Tuple of (start_offset, end_offset) or None if no selection.
+        """
+        try:
+            # Try to get selection from hex view first
+            hex_start_line, hex_start_char = map(int, self.textbox_hex.index(tk.SEL_FIRST).split("."))
+            hex_end_line, hex_end_char = map(int, self.textbox_hex.index(tk.SEL_LAST).split("."))
+
+            # Calculate byte offsets
+            start_byte_in_line = hex_start_char // self.REPR_CHARS_PER_BYTE_HEX
+            start_offset = ((hex_start_line - 1) * self.BYTES_PER_ROW) + start_byte_in_line
+
+            # SEL_LAST is after the last selected char, so we need to adjust
+            # Use same logic as _on_hex_selection for consistency
+            end_byte_in_line = ((hex_end_char - 1) // self.REPR_CHARS_PER_BYTE_HEX) + 1
+            end_offset = ((hex_end_line - 1) * self.BYTES_PER_ROW) + end_byte_in_line
+
+            return (start_offset, end_offset)
+        except tk.TclError:
+            # No selection in hex view, try ASCII view
+            try:
+                ascii_start_line, ascii_start_char = map(int, self.textbox_ascii.index(tk.SEL_FIRST).split("."))
+                ascii_end_line, ascii_end_char = map(int, self.textbox_ascii.index(tk.SEL_LAST).split("."))
+
+                start_offset = ((ascii_start_line - 1) * self.BYTES_PER_ROW) + ascii_start_char
+                end_offset = ((ascii_end_line - 1) * self.BYTES_PER_ROW) + ascii_end_char
+
+                return (start_offset, end_offset)
+            except tk.TclError:
+                return None
+
+    def has_selection(self) -> bool:
+        """Check if there is currently a selection.
+
+        Returns:
+            True if there is a selection, False otherwise.
+        """
+        return self._get_selection_range() is not None
 
     def _show_rightclick_hex_menu(self, event) -> None:
         """Show the Right-Click menu for the hex area.
@@ -276,9 +328,31 @@ class HexAreaView():
             # Only handle hex characters and navigation
             char = event.char.upper()
 
+            # Handle Delete key separately
+            if event.keysym == 'Delete':
+                from tkinter import messagebox
+
+                # Check if there's a selection
+                selection_range = self._get_selection_range()
+                if selection_range:
+                    # Block deletion
+                    start_offset, end_offset = selection_range
+                    if messagebox.askyesno("Delete Block", "Removing the current block will decrease the file size. Continue?"):
+                        self.callbacks[Events.DELETE_BYTE]((start_offset, end_offset))
+                else:
+                    # Single byte deletion
+                    cursor_pos = self.textbox_hex.index(tk.INSERT)
+                    line, col = map(int, cursor_pos.split("."))
+                    byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+                    offset = ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+
+                    if messagebox.askyesno("Delete Byte", "Removing the current byte will decrease the file size. Continue?"):
+                        self.callbacks[Events.DELETE_BYTE](offset)
+                return "break"
+
             # Allow navigation keys and backspace, and ignore F-keys and Control combinations
             if (event.keysym in ['Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Prior', 'Next',
-                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5',
+                                'BackSpace', 'Tab', 'F3', 'F5',
                                 'Control_L', 'Control_R', 'Alt_L', 'Alt_R', 'Shift_L', 'Shift_R',
                                 'Win_L', 'Win_R', 'Super_L', 'Super_R', 'Caps_Lock', 'Num_Lock',
                                 'Scroll_Lock', 'Escape', 'Insert', 'Pause', 'Print'] or
@@ -361,9 +435,30 @@ class HexAreaView():
             # Get the character pressed
             char = event.char
 
+            # Handle Delete key separately
+            if event.keysym == 'Delete':
+                from tkinter import messagebox
+
+                # Check if there's a selection
+                selection_range = self._get_selection_range()
+                if selection_range:
+                    # Block deletion
+                    start_offset, end_offset = selection_range
+                    if messagebox.askyesno("Delete Block", "Removing the current block will decrease the file size. Continue?"):
+                        self.callbacks[Events.DELETE_BYTE]((start_offset, end_offset))
+                else:
+                    # Single byte deletion
+                    cursor_pos = self.textbox_ascii.index(tk.INSERT)
+                    line, col = map(int, cursor_pos.split("."))
+                    offset = ((line - 1) * self.BYTES_PER_ROW) + col
+
+                    if messagebox.askyesno("Delete Byte", "Removing the current byte will decrease the file size. Continue?"):
+                        self.callbacks[Events.DELETE_BYTE](offset)
+                return "break"
+
             # Allow navigation keys and ignore F-keys and Control combinations
             if (event.keysym in ['Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Prior', 'Next',
-                                'BackSpace', 'Delete', 'Tab', 'F3', 'F5',
+                                'BackSpace', 'Tab', 'F3', 'F5',
                                 'Control_L', 'Control_R', 'Alt_L', 'Alt_R', 'Shift_L', 'Shift_R',
                                 'Win_L', 'Win_R', 'Super_L', 'Super_R', 'Caps_Lock', 'Num_Lock',
                                 'Scroll_Lock', 'Escape', 'Insert', 'Pause', 'Print'] or
@@ -428,6 +523,9 @@ class HexAreaView():
             textbox.delete('1.0', tk.END)
             for tag in TAGS:
                 textbox.tag_remove(tag, "1.0", tk.END)
+
+        # Update menu state to reflect no selection
+        self.root.update_clear_block_menu(False)
 
     @property
     def widget(self) -> tk.Frame:

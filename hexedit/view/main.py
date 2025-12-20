@@ -82,6 +82,7 @@ class View(tk.Tk):
             MenuBar.Events.SAVE:                    self.save_file,
             MenuBar.Events.SAVE_AS:                 self.save_file_as,
             MenuBar.Events.UNDO:                    self.undo,
+            MenuBar.Events.CLEAR_BLOCK:             self.clear_block,
             MenuBar.Events.SEARCH:                  self.show_search,
             MenuBar.Events.FIND_NEXT:               self.find_next,
             MenuBar.Events.FIND_PREV:               self.find_prev,
@@ -115,6 +116,9 @@ class View(tk.Tk):
         # Delegate a few interface functions directly to internal implementation
         self.populate_hex_view = self.hex_view.populate_hex_view
         self.make_visible = self.hex_view.make_visible
+
+        # Initialize Clear Block menu state to disabled
+        self.menubar.update_clear_block_state(False)
 
         self.reset()
 
@@ -241,9 +245,29 @@ class View(tk.Tk):
 
         self.callbacks[Events.UNDO]()
 
+    def clear_block(self, event = None) -> None:
+        """Clear the selected block."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            from tkinter import messagebox
+            if messagebox.askyesno("Delete Block", "Removing the current block will decrease the file size. Continue?"):
+                self.callbacks[Events.DELETE_BYTE](selection_range)
+
     def show_about(self, event = None) -> None:
         """Show the 'About' window."""
         AboutWindow(self.root)
+
+    def update_clear_block_menu(self, has_selection: bool) -> None:
+        """Update Clear Block menu state based on selection.
+
+        Args:
+            has_selection: True if there is a selection, False otherwise.
+        """
+        self.menubar.update_clear_block_state(has_selection)
 
     def set_status(self, status: str) -> None:
         """Set the given status in the status bar.

@@ -77,3 +77,9 @@ class Events(enum.Enum):
 
     # User wants to undo last change
     UNDO               = enum.auto()
+
+    # User wants to delete byte at cursor
+    DELETE_BYTE        = enum.auto()
+
+    # User wants to clear selected block
+    CLEAR_BLOCK        = enum.auto()

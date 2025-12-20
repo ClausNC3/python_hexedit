@@ -73,6 +73,9 @@ class MenuBar(tk.Menu):
         # User wants to undo last change
         UNDO                    = enum.auto()
 
+        # User wants to clear selected block
+        CLEAR_BLOCK             = enum.auto()
+
         # User wants to search file
         SEARCH                  = enum.auto()
 
@@ -196,7 +199,16 @@ class MenuBar(tk.Menu):
         editmenu = tk.Menu(self, tearoff = 0)
         add_command(editmenu, True, label = "Undo",
                     command = lambda: self.callbacks[self.Events.UNDO](None), accelerator = "Ctrl+Z")
+        editmenu.add_separator()
+        # Clear Block should NOT be in commands_require_file, it has its own enable/disable logic
+        editmenu.add_command(label = "Clear Block",
+                             command = lambda: self.callbacks[self.Events.CLEAR_BLOCK](None),
+                             accelerator = "Delete")
         self.add_cascade(label = "Edit", menu = editmenu)
+
+        # Store reference to edit menu and Clear Block index for enabling/disabling
+        self.editmenu = editmenu
+        self.clear_block_index = 2  # Index of Clear Block in Edit menu (after separator)
 
         searchmenu = tk.Menu(self, tearoff = 0)
         add_command(searchmenu, True, label = "Find...", 
@@ -226,10 +238,19 @@ class MenuBar(tk.Menu):
 
     def toggle_loaded_file_commands(self, enable: bool) -> None:
         """Enables/disables menu options which require an open file."""
-        target = tk.NORMAL if enable else tk.DISABLED 
+        target = tk.NORMAL if enable else tk.DISABLED
         for (menu, label), requires_file in self.commands_require_file.items():
             if requires_file:
                 menu.entryconfigure(label, state = target)
+
+    def update_clear_block_state(self, has_selection: bool) -> None:
+        """Enable or disable the Clear Block menu item based on selection state.
+
+        Args:
+            has_selection: True if there is a selection, False otherwise.
+        """
+        state = tk.NORMAL if has_selection else tk.DISABLED
+        self.editmenu.entryconfigure(self.clear_block_index, state=state)
 
 class HexAreaMenu(BaseHexAreaMenu):
     class Events(enum.Enum):

@@ -101,6 +101,7 @@ class Application():
             v.Events.SAVE:                   self.cb_save,
             v.Events.SAVE_AS:                self.cb_save_as,
             v.Events.UNDO:                   self.cb_undo,
+            v.Events.DELETE_BYTE:            self.cb_delete_byte,
             v.Events.GET_CWD:                self.cb_get_cwd,
             v.Events.CANCEL_LOAD:            self.cb_cancel_load,
             v.Events.SEARCH:                 self.cb_search,
@@ -488,7 +489,75 @@ class Application():
             if not self.undo_stack:
                 self.is_modified = False
 
-            self.view.set_status(f"Undid change at offset {hex(offset)}")
+            self.view.set_status(f"Undid change at offset 0x{offset:X}")
         except Exception as e:
             self.view.display_error(f"Failed to undo:\n{str(e)}")
             self.view.set_status("Undo failed")
+
+    def cb_delete_byte(self, offset) -> None:
+        """Callback for deleting a byte or block at the specified offset.
+
+        Args:
+            offset: Either an int for single byte deletion, or a tuple (start, end) for block deletion.
+        """
+        if not hasattr(self, 'file_buffer') or len(self.file_buffer) == 0:
+            self.view.set_status("No file loaded")
+            return
+
+        try:
+            # Check if it's a block deletion (tuple) or single byte deletion (int)
+            if isinstance(offset, tuple):
+                # Block deletion
+                start_offset, end_offset = offset
+
+                if start_offset < 0 or end_offset > len(self.file_buffer) or start_offset >= end_offset:
+                    self.view.set_status("Invalid offset range")
+                    return
+
+                bytes_to_delete = end_offset - start_offset
+
+                # Remove the block from the buffer
+                del self.file_buffer[start_offset:end_offset]
+
+                # Clear undo stack as deletions cannot be undone with current implementation
+                self.undo_stack = []
+                self.is_modified = True
+
+                # Update the view to reflect the change
+                self.view.reset()
+                self.view.populate_hex_view(self.file_buffer, lambda success: None)
+
+                # Make the start offset visible
+                if start_offset < len(self.file_buffer):
+                    self.view.make_visible(start_offset, highlight=True)
+                elif len(self.file_buffer) > 0:
+                    self.view.make_visible(len(self.file_buffer) - 1, highlight=True)
+
+                self.view.set_status(f"Deleted {bytes_to_delete} bytes at offset 0x{start_offset:X}, file size now {len(self.file_buffer)} bytes")
+            else:
+                # Single byte deletion
+                if offset < 0 or offset >= len(self.file_buffer):
+                    self.view.set_status("Invalid offset")
+                    return
+
+                # Remove the byte from the buffer
+                del self.file_buffer[offset]
+
+                # Clear undo stack as deletions cannot be undone with current implementation
+                self.undo_stack = []
+                self.is_modified = True
+
+                # Update the view to reflect the change
+                self.view.reset()
+                self.view.populate_hex_view(self.file_buffer, lambda success: None)
+
+                # Make the same offset visible (which now contains the next byte)
+                if offset < len(self.file_buffer):
+                    self.view.make_visible(offset, highlight=True)
+                elif len(self.file_buffer) > 0:
+                    self.view.make_visible(len(self.file_buffer) - 1, highlight=True)
+
+                self.view.set_status(f"Deleted byte at offset 0x{offset:X}, file size now {len(self.file_buffer)} bytes")
+        except Exception as e:
+            self.view.display_error(f"Failed to delete:\n{str(e)}")
+            self.view.set_status("Delete failed")
