@@ -35,6 +35,8 @@ License:
 """
 import tkinter as tk
 from tkinter import ttk
+import struct
+import datetime
 
 from typing import Dict, Callable, Optional
 from io import StringIO
@@ -106,6 +108,11 @@ class HexAreaView():
         self.textbox_header_ascii.tag_configure("color", foreground="blue")
         self.textbox_header_ascii.insert(tk.END, "      ANSI ASCII", "color")
 
+        self.textbox_header_decoded = tk.Text(self.top_frame, height = 1, width = 25, padx = 10, wrap = tk.NONE, bd = 0)
+        self.textbox_header_decoded.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        self.textbox_header_decoded.tag_configure("color", foreground="blue")
+        self.textbox_header_decoded.insert(tk.END, " Decoded", "color")
+
         self.main_frame = tk.Frame(parent, bg = 'white')
         self.textbox_address = tk.Text(self.main_frame, width = self.ADDRESS_SIZE, padx = 10, wrap = tk.NONE, bd = 0)
         self.textbox_address.pack(side=tk.LEFT, fill=tk.Y, expand=False)
@@ -130,8 +137,35 @@ class HexAreaView():
         self.textbox_ascii.tag_config(TAG_GOTO, background='CornflowerBlue')
         self.textbox_ascii.tag_config(TAG_SELECTION, background='lightgray')
 
+        # Decoded section - fixed panel showing two-column list format
+        # Create a frame for the decoded section (fixed, doesn't scroll)
+        parent_bg = parent.cget('bg')
+        decoded_panel_frame = tk.Frame(self.main_frame, bg=parent_bg)
+        decoded_panel_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        
+        # Endianness toggle button frame
+        endian_frame = tk.Frame(decoded_panel_frame, bg=parent_bg)
+        endian_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        
+        tk.Label(endian_frame, text="Endian:", bg=parent_bg).pack(side=tk.LEFT)
+        self.endian_var = tk.StringVar(value='LE')
+        self.endian_button = tk.Button(endian_frame, textvariable=self.endian_var, width=4,
+                                       command=self._toggle_endian)
+        self.endian_button.pack(side=tk.LEFT, padx=2)
+        
+        self.textbox_decoded = tk.Text(decoded_panel_frame, width = 25, height=20, padx = 10, wrap = tk.NONE, relief=tk.SUNKEN)
+        self.textbox_decoded.pack(fill=tk.BOTH, expand=True)
+        self.textbox_decoded.tag_config("label", foreground="gray")
+        self.textbox_decoded.tag_config("value", foreground="white")
+        self.textbox_decoded.config(state=tk.DISABLED)  # Read-only
+        
+        # Store reference to file buffer for decoding
+        self.file_buffer = None
+        self.use_little_endian = True  # Default to little endian
+
         self.textboxes = [self.textbox_address, self.textbox_hex, self.textbox_ascii]
-        self.textboxes_without_selection = [self.textbox_header_address, self.textbox_header_hex, self.textbox_header_ascii, self.textbox_address]
+        self.textboxes_without_selection = [self.textbox_header_address, self.textbox_header_hex, self.textbox_header_ascii, self.textbox_header_decoded, self.textbox_address]
 
         self.scrollbar_frame = ttk.Frame(parent)
         self.scrollbar = tk.Scrollbar(self.scrollbar_frame)
@@ -142,6 +176,12 @@ class HexAreaView():
         self.scrollbar['command'] = self._on_scrollbar
         for textbox in self.textboxes:
             textbox['yscrollcommand'] = self._on_textscroll
+        
+        # Bind cursor movement events to update decoded section
+        self.textbox_hex.bind("<KeyRelease>", self._on_cursor_move)
+        self.textbox_hex.bind("<Button-1>", self._on_cursor_move)
+        self.textbox_ascii.bind("<KeyRelease>", self._on_cursor_move)
+        self.textbox_ascii.bind("<Button-1>", self._on_cursor_move)
 
         # Disable selection on some area
         for textbox in self.textboxes_without_selection:
@@ -199,8 +239,14 @@ class HexAreaView():
             hex_end   = f"{ascii_end_line}.{( (ascii_end_char - 1) * self.REPR_CHARS_PER_BYTE_HEX) + self.REPR_CHARS_PER_BYTE_HEX - 1}"
             self.textbox_hex.tag_add(TAG_SELECTION, hex_start, hex_end)
             has_selection = True
+            
+            # Update decoded section based on selection
+            start_offset = ((ascii_start_line - 1) * self.BYTES_PER_ROW) + ascii_start_char
+            end_offset = ((ascii_end_line - 1) * self.BYTES_PER_ROW) + ascii_end_char
+            self._update_decoded_section(start_offset, end_offset)
         except Exception:
-            pass
+            # No selection, update based on cursor position
+            self._update_decoded_section_from_cursor()
         finally:
             # Update menu state
             self.root.update_clear_block_menu(has_selection)
@@ -217,8 +263,14 @@ class HexAreaView():
             ascii_end   = f"{hex_end_line}.{( (hex_end_char - 1) // self.REPR_CHARS_PER_BYTE_HEX) + 1}"
             self.textbox_ascii.tag_add(TAG_SELECTION, ascii_start, ascii_end)
             has_selection = True
+            
+            start_byte_in_line = hex_start_char // self.REPR_CHARS_PER_BYTE_HEX
+            start_offset = ((hex_start_line - 1) * self.BYTES_PER_ROW) + start_byte_in_line
+            end_byte_in_line = ((hex_end_char - 1) // self.REPR_CHARS_PER_BYTE_HEX) + 1
+            end_offset = ((hex_end_line - 1) * self.BYTES_PER_ROW) + end_byte_in_line
+            self._update_decoded_section(start_offset, end_offset)
         except Exception:
-            pass
+            self._update_decoded_section_from_cursor()
         finally:
             # Update menu state
             self.root.update_clear_block_menu(has_selection)
@@ -409,6 +461,8 @@ class HexAreaView():
                     # Keep ASCII editable - just update the content
                     self.textbox_ascii.delete(ascii_pos, f"{ascii_pos}+1c")
                     self.textbox_ascii.insert(ascii_pos, ascii_char)
+                    # Update decoded section
+                    self._update_decoded_section(offset)
 
             # Move cursor to next position
             if pos_in_byte == 0:
@@ -496,10 +550,9 @@ class HexAreaView():
                     start_col = col * self.REPR_CHARS_PER_BYTE_HEX
                     hex_pos_start = f"{line}.{start_col}"
                     hex_pos_end = f"{line}.{start_col + 2}"
-
-                    # Keep hex editable - just update the content
                     self.textbox_hex.delete(hex_pos_start, hex_pos_end)
                     self.textbox_hex.insert(hex_pos_start, hex_str)
+                    self._update_decoded_section(offset)
 
             # Move cursor to next position
             if col < self.BYTES_PER_ROW - 1:
@@ -523,6 +576,10 @@ class HexAreaView():
             textbox.delete('1.0', tk.END)
             for tag in TAGS:
                 textbox.tag_remove(tag, "1.0", tk.END)
+        self.textbox_decoded.config(state = tk.NORMAL)
+        self.textbox_decoded.delete('1.0', tk.END)
+        self.textbox_decoded.config(state = tk.DISABLED)
+        self.file_buffer = None
 
         # Update menu state to reflect no selection
         self.root.update_clear_block_menu(False)
@@ -531,6 +588,377 @@ class HexAreaView():
     def widget(self) -> tk.Frame:
         """Return the actual widget."""
         return self.main_frame
+
+    def _toggle_endian(self) -> None:
+        """Toggle between little endian and big endian."""
+        self.use_little_endian = not self.use_little_endian
+        self.endian_var.set('LE' if self.use_little_endian else 'BE')
+        # Update decoded section with new endianness
+        try:
+            cursor_pos = self.textbox_hex.index(tk.INSERT)
+            line, col = map(int, cursor_pos.split("."))
+            byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+            offset = ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+            self._update_decoded_section(offset)
+        except:
+            self._update_decoded_section_from_cursor()
+    
+    def _decode_bytes_at_offset(self, offset: int, max_bytes: int = 16) -> Dict[str, str]:
+        """Decode bytes at a specific offset into various formats.
+        
+        Args:
+            offset: Byte offset in the file buffer
+            max_bytes: Maximum number of bytes to use for decoding
+            
+        Returns:
+            Dictionary mapping format names to decoded values
+        """
+        if self.file_buffer is None or offset < 0 or offset >= len(self.file_buffer):
+            return {}
+        
+        decoded = {}
+        available_bytes = min(max_bytes, len(self.file_buffer) - offset)
+        chunk = bytes(self.file_buffer[offset:offset + available_bytes])
+        endian = '<' if self.use_little_endian else '>'
+        
+        # Binary (8 bit)
+        if available_bytes >= 1:
+            decoded['binary'] = format(chunk[0], '08b')
+        
+        # uint8_t / int8_t
+        if available_bytes >= 1:
+            decoded['uint8_t'] = str(chunk[0])
+            decoded['int8_t'] = str(struct.unpack('b', chunk[0:1])[0])
+        
+        # uint16_t / int16_t
+        if available_bytes >= 2:
+            try:
+                decoded['uint16_t'] = str(struct.unpack(f'{endian}H', chunk[0:2])[0])
+                decoded['int16_t'] = str(struct.unpack(f'{endian}h', chunk[0:2])[0])
+            except:
+                pass
+        
+        # uint24_t / int24_t (3 bytes)
+        if available_bytes >= 3:
+            try:
+                if self.use_little_endian:
+                    u24_bytes = chunk[0:3] + b'\x00'
+                    decoded['uint24_t'] = str(struct.unpack('<I', u24_bytes)[0])
+                    i24_val = struct.unpack('<i', u24_bytes)[0]
+                    if i24_val > 0x7FFFFF:
+                        i24_val -= 0x1000000
+                    decoded['int24_t'] = str(i24_val)
+                else:
+                    u24_bytes = b'\x00' + chunk[0:3]
+                    decoded['uint24_t'] = str(struct.unpack('>I', u24_bytes)[0])
+                    i24_val = struct.unpack('>i', u24_bytes)[0]
+                    if i24_val > 0x7FFFFF:
+                        i24_val -= 0x1000000
+                    decoded['int24_t'] = str(i24_val)
+            except:
+                pass
+        
+        # uint32_t / int32_t
+        if available_bytes >= 4:
+            try:
+                decoded['uint32_t'] = str(struct.unpack(f'{endian}I', chunk[0:4])[0])
+                decoded['int32_t'] = str(struct.unpack(f'{endian}i', chunk[0:4])[0])
+            except:
+                pass
+        
+        # uint48_t / int48_t (6 bytes)
+        if available_bytes >= 6:
+            try:
+                if self.use_little_endian:
+                    u48_bytes = chunk[0:6] + b'\x00\x00'
+                    decoded['uint48_t'] = str(struct.unpack('<Q', u48_bytes)[0])
+                    i48_val = struct.unpack('<q', u48_bytes)[0]
+                    if i48_val > 0x7FFFFFFFFFFF:
+                        i48_val -= 0x1000000000000
+                    decoded['int48_t'] = str(i48_val)
+                else:
+                    u48_bytes = b'\x00\x00' + chunk[0:6]
+                    decoded['uint48_t'] = str(struct.unpack('>Q', u48_bytes)[0])
+                    i48_val = struct.unpack('>q', u48_bytes)[0]
+                    if i48_val > 0x7FFFFFFFFFFF:
+                        i48_val -= 0x1000000000000
+                    decoded['int48_t'] = str(i48_val)
+            except:
+                pass
+        
+        # uint64_t / int64_t
+        if available_bytes >= 8:
+            try:
+                decoded['uint64_t'] = str(struct.unpack(f'{endian}Q', chunk[0:8])[0])
+                decoded['int64_t'] = str(struct.unpack(f'{endian}q', chunk[0:8])[0])
+            except:
+                pass
+        
+        # half float (16 bit)
+        if available_bytes >= 2:
+            try:
+                # Python doesn't have native half float, approximate using struct
+                u16 = struct.unpack(f'{endian}H', chunk[0:2])[0]
+                # Convert to float approximation
+                sign = (u16 >> 15) & 0x1
+                exp = (u16 >> 10) & 0x1F
+                mantissa = u16 & 0x3FF
+                if exp == 0:
+                    val = mantissa / 1024.0 * (2.0 ** -14)
+                elif exp == 31:
+                    val = float('inf') if mantissa == 0 else float('nan')
+                else:
+                    val = (1.0 + mantissa / 1024.0) * (2.0 ** (exp - 15))
+                if sign:
+                    val = -val
+                if val == val:  # Check for NaN
+                    decoded['half_float'] = f"{val:.6g}"
+            except:
+                pass
+        
+        # float (32 bit)
+        if available_bytes >= 4:
+            try:
+                f32 = struct.unpack(f'{endian}f', chunk[0:4])[0]
+                if f32 == f32:  # Check for NaN
+                    decoded['float'] = f"{f32:.6g}"
+            except:
+                pass
+        
+        # double (64 bit)
+        if available_bytes >= 8:
+            try:
+                f64 = struct.unpack(f'{endian}d', chunk[0:8])[0]
+                if f64 == f64:  # Check for NaN
+                    decoded['double'] = f"{f64:.10g}"
+            except:
+                pass
+        
+        # long double (128 bit) - approximate as double precision
+        if available_bytes >= 16:
+            try:
+                # Most systems use 80-bit or 64-bit for long double, approximate
+                f64 = struct.unpack(f'{endian}d', chunk[0:8])[0]
+                if f64 == f64:
+                    decoded['long_double'] = f"{f64:.10g}"
+            except:
+                pass
+        
+        # Signed/Unsigned LEB128
+        if available_bytes >= 1:
+            try:
+                # Unsigned LEB128
+                result = 0
+                shift = 0
+                for i in range(min(10, available_bytes)):
+                    byte = chunk[i]
+                    result |= (byte & 0x7F) << shift
+                    if (byte & 0x80) == 0:
+                        decoded['uleb128'] = str(result)
+                        break
+                    shift += 7
+                
+                # Signed LEB128
+                result = 0
+                shift = 0
+                for i in range(min(10, available_bytes)):
+                    byte = chunk[i]
+                    result |= (byte & 0x7F) << shift
+                    if (byte & 0x80) == 0:
+                        if byte & 0x40:
+                            result |= -((1 << shift) << 7)
+                        decoded['sleb128'] = str(result)
+                        break
+                    shift += 7
+            except:
+                pass
+        
+        # bool
+        if available_bytes >= 1:
+            decoded['bool'] = 'true' if chunk[0] != 0 else 'false'
+        
+        # ASCII Character
+        if available_bytes >= 1:
+            char = chunk[0]
+            if 32 <= char <= 126:
+                decoded['ascii_char'] = f"'{chr(char)}'"
+            else:
+                decoded['ascii_char'] = f"\\x{char:02x}"
+        
+        # Wide Character (UTF-16)
+        if available_bytes >= 2:
+            try:
+                wchar = struct.unpack(f'{endian}H', chunk[0:2])[0]
+                if 32 <= wchar <= 126 or wchar > 127:
+                    try:
+                        decoded['wide_char'] = f"'{chr(wchar)}'"
+                    except:
+                        decoded['wide_char'] = f"U+{wchar:04X}"
+                else:
+                    decoded['wide_char'] = f"U+{wchar:04X}"
+            except:
+                pass
+        
+        # UTF-8 code point
+        if available_bytes >= 1:
+            try:
+                if chunk[0] < 0x80:
+                    decoded['utf8'] = f"U+{chunk[0]:04X}"
+                elif chunk[0] < 0xE0 and available_bytes >= 2:
+                    code_point = ((chunk[0] & 0x1F) << 6) | (chunk[1] & 0x3F)
+                    decoded['utf8'] = f"U+{code_point:04X}"
+                elif chunk[0] < 0xF0 and available_bytes >= 3:
+                    code_point = ((chunk[0] & 0x0F) << 12) | ((chunk[1] & 0x3F) << 6) | (chunk[2] & 0x3F)
+                    decoded['utf8'] = f"U+{code_point:04X}"
+                elif available_bytes >= 4:
+                    code_point = ((chunk[0] & 0x07) << 18) | ((chunk[1] & 0x3F) << 12) | ((chunk[2] & 0x3F) << 6) | (chunk[3] & 0x3F)
+                    decoded['utf8'] = f"U+{code_point:04X}"
+            except:
+                pass
+        
+        # String (null-terminated ASCII)
+        if available_bytes >= 1:
+            try:
+                end_idx = chunk.find(0)
+                if end_idx > 0:
+                    decoded['string'] = chunk[0:end_idx].decode('ascii', errors='replace')
+                elif chunk[0] >= 32 and chunk[0] <= 126:
+                    # Show first few chars if no null terminator
+                    decoded['string'] = chunk[0:min(20, available_bytes)].decode('ascii', errors='replace')
+            except:
+                pass
+        
+        # Wide String (null-terminated UTF-16)
+        if available_bytes >= 2:
+            try:
+                null_pos = -1
+                for i in range(0, available_bytes - 1, 2):
+                    if struct.unpack(f'{endian}H', chunk[i:i+2])[0] == 0:
+                        null_pos = i
+                        break
+                if null_pos > 0:
+                    decoded['wide_string'] = chunk[0:null_pos].decode('utf-16-le' if self.use_little_endian else 'utf-16-be', errors='replace')
+            except:
+                pass
+        
+        # time_t (Unix timestamp)
+        if available_bytes >= 4:
+            try:
+                timestamp = struct.unpack(f'{endian}i', chunk[0:4])[0]
+                if 0 <= timestamp <= 2147483647:  # Valid range
+                    dt = datetime.datetime.fromtimestamp(timestamp)
+                    decoded['time_t'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+        
+        # DOS Date
+        if available_bytes >= 2:
+            try:
+                dos_date = struct.unpack(f'{endian}H', chunk[0:2])[0]
+                day = dos_date & 0x1F
+                month = (dos_date >> 5) & 0x0F
+                year = 1980 + ((dos_date >> 9) & 0x7F)
+                if 1 <= day <= 31 and 1 <= month <= 12:
+                    decoded['dos_date'] = f"{year:04d}-{month:02d}-{day:02d}"
+            except:
+                pass
+        
+        # DOS Time
+        if available_bytes >= 2:
+            try:
+                dos_time = struct.unpack(f'{endian}H', chunk[0:2])[0]
+                seconds = (dos_time & 0x1F) * 2
+                minutes = (dos_time >> 5) & 0x3F
+                hours = (dos_time >> 11) & 0x1F
+                if hours < 24 and minutes < 60 and seconds < 60:
+                    decoded['dos_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            except:
+                pass
+        
+        return decoded
+    
+    def _update_decoded_section(self, start_offset: int, end_offset: int = None) -> None:
+        """Update the decoded section based on selected byte range.
+        
+        Args:
+            start_offset: Starting byte offset
+            end_offset: Ending byte offset (if None, uses start_offset)
+        """
+        if end_offset is None:
+            end_offset = start_offset
+        
+        # Use start_offset for decoding (show values starting from selection start)
+        decoded = self._decode_bytes_at_offset(start_offset)
+        format_labels = [
+            ('binary', 'Binary (8 bit)'),
+            ('uint8_t', 'uint8_t'),
+            ('int8_t', 'int8_t'),
+            ('uint16_t', 'uint16_t'),
+            ('int16_t', 'int16_t'),
+            ('uint24_t', 'uint24_t'),
+            ('int24_t', 'int24_t'),
+            ('uint32_t', 'uint32_t'),
+            ('int32_t', 'int32_t'),
+            ('uint48_t', 'uint48_t'),
+            ('int48_t', 'int48_t'),
+            ('uint64_t', 'uint64_t'),
+            ('int64_t', 'int64_t'),
+            ('half_float', 'half float (16 bit)'),
+            ('float', 'float (32 bit)'),
+            ('double', 'double (64 bit)'),
+            ('long_double', 'long double (128 bit)'),
+            ('sleb128', 'Signed LEB128'),
+            ('uleb128', 'Unsigned LEB128'),
+            ('bool', 'bool'),
+            ('ascii_char', 'ASCII Character'),
+            ('wide_char', 'Wide Character'),
+            ('utf8', 'UTF-8 code point'),
+            ('string', 'String'),
+            ('wide_string', 'Wide String'),
+            ('time_t', 'time_t'),
+            ('dos_date', 'DOS Date'),
+            ('dos_time', 'DOS Time'),
+        ]
+        
+        self.textbox_decoded.config(state=tk.NORMAL)
+        self.textbox_decoded.delete('1.0', tk.END)
+        
+        for fmt_key, fmt_label in format_labels:
+            if fmt_key in decoded:
+                # Format as: "uint8_t    : 123"
+                label_text = f"{fmt_label:<20}: "
+                value_text = decoded[fmt_key]
+                self.textbox_decoded.insert(tk.END, label_text, "label")
+                self.textbox_decoded.insert(tk.END, value_text + "\n", "value")
+        
+        self.textbox_decoded.config(state=tk.DISABLED)
+    
+    def _update_decoded_section_from_cursor(self) -> None:
+        """Update decoded section based on current cursor position."""
+        try:
+            # Try to get cursor from hex view first
+            cursor_pos = self.textbox_hex.index(tk.INSERT)
+            line, col = map(int, cursor_pos.split("."))
+            byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+            offset = ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+            self._update_decoded_section(offset)
+        except:
+            try:
+                # Try ASCII view
+                cursor_pos = self.textbox_ascii.index(tk.INSERT)
+                line, col = map(int, cursor_pos.split("."))
+                offset = ((line - 1) * self.BYTES_PER_ROW) + col
+                self._update_decoded_section(offset)
+            except:
+                # Clear decoded section if we can't determine position
+                self.textbox_decoded.config(state=tk.NORMAL)
+                self.textbox_decoded.delete('1.0', tk.END)
+                self.textbox_decoded.config(state=tk.DISABLED)
+    
+    def _on_cursor_move(self, event) -> None:
+        """Handle cursor movement to update decoded section."""
+        # Small delay to ensure cursor position is updated
+        self.root.after_idle(self._update_decoded_section_from_cursor)
 
     def populate_hex_view(self, byte_arr: bytes, done_cb: Callable[[], None]) -> None:
         """Populate the hex view with the content of the file.
@@ -544,6 +972,11 @@ class HexAreaView():
 
         """
         self.abort_load = False
+        
+        if isinstance(byte_arr, bytearray):
+            self.file_buffer = byte_arr
+        else:
+            self.file_buffer = bytearray(byte_arr)
 
         self.hex_content_done_cb = done_cb
         self.hex_thread_queue = queue.Queue()
@@ -631,6 +1064,8 @@ class HexAreaView():
             self.textbox_ascii.insert(tk.END, textbox_ascii_content.getvalue())
             self.textbox_address.insert(tk.END, textbox_address_content.getvalue(), "color")
             self.textbox_address.tag_add(TAG_JUSTIFY_RIGHT, 1.0, tk.END)
+            self.root.after_idle(self._update_decoded_section_from_cursor)
+            
             self.root.after_idle(self._add_content_to_hex_view)
         except tk.TclError as e:
             self._cleanup_hex_content(is_success = False)
@@ -658,11 +1093,14 @@ class HexAreaView():
         # Keep hex and ASCII textboxes editable
         self.textbox_hex.config(state = tk.NORMAL)
         self.textbox_ascii.config(state = tk.NORMAL)
+        # Decoded textbox is read-only
+        self.textbox_decoded.config(state = tk.DISABLED)
 
-        # Set cursor to beginning of hex textbox
+        # Set cursor to beginning of hex textbox and update decoded section
         if is_success:
             self.textbox_hex.mark_set(tk.INSERT, "1.0")
             self.textbox_hex.focus_set()
+            self._update_decoded_section(0)
 
         self.hex_content_done_cb(is_success)
         self.hex_content_done_cb = None
@@ -752,10 +1190,14 @@ class HexAreaView():
         self.textbox_ascii.tag_remove(TAG_GOTO, "1.0", tk.END)
 
         if offset is None:
+            self.textbox_decoded.config(state=tk.NORMAL)
+            self.textbox_decoded.delete('1.0', tk.END)
+            self.textbox_decoded.config(state=tk.DISABLED)
             return
 
         location = self._offset_to_line_column(self.REPR_CHARS_PER_BYTE_HEX, offset)
         self.textbox_hex.see(location)
+        self._update_decoded_section(offset)
 
         if highlight:
             self.textbox_hex.tag_add(TAG_GOTO, location, f"{location}+{(length * self.REPR_CHARS_PER_BYTE_HEX) - 1}c")
