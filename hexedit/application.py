@@ -107,13 +107,14 @@ class Application():
             v.Events.SEARCH:                 self.cb_search,
             v.Events.FIND_NEXT:              self.cb_find_next,
             v.Events.FIND_PREV:              lambda: self.cb_find_next(reverse = True),
-            v.Events.COPY_SELECTION:         self.cb_copy_selection,
             v.Events.HEX_MODIFIED:           self.cb_hex_modified,
             v.Events.ASCII_MODIFIED:         self.cb_ascii_modified,
         }
 
         self.current_file_path = None
-        self.undo_stack = []  # Stack to hold undo operations
+        # Stack to hold undo operations
+        # Each item is a tuple: ('modify', offset, old_value) or ('delete', start_offset, deleted_bytes)
+        self.undo_stack = []
         self.is_modified = False  # Track if file has been modified
 
         self.view = v.View(title = APP_NAME, callbacks = callbacks)
@@ -166,6 +167,11 @@ class Application():
         def done_loading_hex(is_success: bool) -> None:
             self.background_tasks.task_done(self.Task.POPULATE_HEX_AREA, is_success)
             self._finalize_load()
+
+        # Close old mmap if it exists to prevent resource leak
+        if hasattr(self, 'file_mmap') and self.file_mmap is not None:
+            self.file_mmap.close()
+            self.file_mmap = None
 
         self.file_mmap = utils.memory_map(path_file)
         # Create a mutable buffer from the file
@@ -241,18 +247,6 @@ class Application():
         self.view.set_status("Refreshing...")
         if self.current_file_path is not None:
             self.populate_view(self.current_file_path)
-
-    def cb_structure_selected(self, path: str, start_offset: int, end_offset: int) -> None:
-        """Callback for an event where the user selects a structure from the tree."""
-        self.view.mark_range(None, None, mark = False, highlight_type = HighlightType.DEFAULT)
-        self.view.mark_range(start_offset, end_offset, mark = True, highlight_type = HighlightType.DEFAULT)
-        self.view.make_visible(start_offset)
-
-    def cb_copy_selection(self, path: str, start_offset: int, end_offset: int, byte_representation: ByteRepresentation) -> None:
-        """Callback for an event where the user wants to copy the contents of a tree item."""
-        byte_array = self.model.get_byte_range(self.file_mmap, start_offset, end_offset, byte_representation)
-        self.view.clipboard_clear()
-        self.view.clipboard_append(byte_array)
     
     def cb_goto(self, offset: int) -> None:
         """Callback for an event where the user wants to jump to a given offset."""
@@ -366,7 +360,7 @@ class Application():
 
             # Save old value for undo
             old_value = self.file_buffer[offset]
-            self.undo_stack.append((offset, old_value))
+            self.undo_stack.append(('modify', offset, old_value))
 
             # Update buffer
             self.file_buffer[offset] = byte_value
@@ -396,7 +390,7 @@ class Application():
 
             # Save old value for undo
             old_value = self.file_buffer[offset]
-            self.undo_stack.append((offset, old_value))
+            self.undo_stack.append(('modify', offset, old_value))
 
             # Update buffer
             self.file_buffer[offset] = byte_value
@@ -474,22 +468,39 @@ class Application():
             return
 
         try:
-            # Pop the last change from the undo stack
-            offset, old_value = self.undo_stack.pop()
+            # Pop the last operation from the undo stack
+            operation = self.undo_stack.pop()
 
-            # Restore the old value in the buffer
-            self.file_buffer[offset] = old_value
+            if operation[0] == 'modify':
+                # Undo a byte modification
+                _, offset, old_value = operation
+                self.file_buffer[offset] = old_value
 
-            # Update the view to reflect the change
-            self.view.reset()
-            self.view.populate_hex_view(self.file_buffer, lambda success: None)
-            self.view.make_visible(offset, highlight=True)
+                # Update the view to reflect the change
+                self.view.reset()
+                self.view.populate_hex_view(self.file_buffer, lambda success: None)
+                self.view.make_visible(offset, highlight=True)
+
+                self.view.set_status(f"Undid change at offset 0x{offset:X}")
+
+            elif operation[0] == 'delete':
+                # Undo a deletion by re-inserting the deleted bytes
+                _, start_offset, deleted_bytes = operation
+
+                # Re-insert the deleted bytes
+                self.file_buffer[start_offset:start_offset] = deleted_bytes
+
+                # Update the view to reflect the change
+                self.view.reset()
+                self.view.populate_hex_view(self.file_buffer, lambda success: None)
+                self.view.make_visible(start_offset, highlight=True)
+
+                self.view.set_status(f"Undid deletion at offset 0x{start_offset:X}, restored {len(deleted_bytes)} bytes")
 
             # If undo stack is empty, file is no longer modified
             if not self.undo_stack:
                 self.is_modified = False
 
-            self.view.set_status(f"Undid change at offset 0x{offset:X}")
         except Exception as e:
             self.view.display_error(f"Failed to undo:\n{str(e)}")
             self.view.set_status("Undo failed")
@@ -516,11 +527,13 @@ class Application():
 
                 bytes_to_delete = end_offset - start_offset
 
+                # Save deleted bytes for undo
+                deleted_bytes = bytearray(self.file_buffer[start_offset:end_offset])
+                self.undo_stack.append(('delete', start_offset, deleted_bytes))
+
                 # Remove the block from the buffer
                 del self.file_buffer[start_offset:end_offset]
 
-                # Clear undo stack as deletions cannot be undone with current implementation
-                self.undo_stack = []
                 self.is_modified = True
 
                 # Update the view to reflect the change
@@ -540,11 +553,13 @@ class Application():
                     self.view.set_status("Invalid offset")
                     return
 
+                # Save deleted byte for undo
+                deleted_bytes = bytearray([self.file_buffer[offset]])
+                self.undo_stack.append(('delete', offset, deleted_bytes))
+
                 # Remove the byte from the buffer
                 del self.file_buffer[offset]
 
-                # Clear undo stack as deletions cannot be undone with current implementation
-                self.undo_stack = []
                 self.is_modified = True
 
                 # Update the view to reflect the change
