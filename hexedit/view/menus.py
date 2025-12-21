@@ -76,6 +76,15 @@ class MenuBar(tk.Menu):
         # User wants to clear selected block
         CLEAR_BLOCK             = enum.auto()
 
+        # User wants to select all bytes
+        SELECT_ALL              = enum.auto()
+
+        # User wants to copy selection/all as raw data
+        COPY_NORMAL             = enum.auto()
+
+        # User wants to copy selection/all as C source array
+        COPY_C_SOURCE           = enum.auto()
+
         # User wants to search file
         SEARCH                  = enum.auto()
 
@@ -200,6 +209,21 @@ class MenuBar(tk.Menu):
         add_command(editmenu, True, label = "Undo",
                     command = lambda: self.callbacks[self.Events.UNDO](None), accelerator = "Ctrl+Z")
         editmenu.add_separator()
+
+        # Copy submenu with dynamic label (Copy Block / Copy All)
+        copymenu = tk.Menu(editmenu, tearoff = 0)
+        add_command(copymenu, True, label = "Normally",
+                    command = lambda: self.callbacks[self.Events.COPY_NORMAL](None), accelerator = "Ctrl+C")
+        copymenu.add_separator()
+        add_command(copymenu, True, label = "C Source",
+                    command = lambda: self.callbacks[self.Events.COPY_C_SOURCE](None))
+        editmenu.add_cascade(label = "Copy All", menu = copymenu)
+        self.copy_menu_index = 2  # Index of Copy menu item in Edit menu (after Undo and separator)
+
+        editmenu.add_separator()
+        add_command(editmenu, True, label = "Select All",
+                    command = lambda: self.callbacks[self.Events.SELECT_ALL](None), accelerator = "Ctrl+A")
+
         # Clear Block should NOT be in commands_require_file, it has its own enable/disable logic
         editmenu.add_command(label = "Clear Block",
                              command = lambda: self.callbacks[self.Events.CLEAR_BLOCK](None),
@@ -208,7 +232,7 @@ class MenuBar(tk.Menu):
 
         # Store reference to edit menu and Clear Block index for enabling/disabling
         self.editmenu = editmenu
-        self.clear_block_index = 2  # Index of Clear Block in Edit menu (after separator)
+        self.clear_block_index = 5  # Index of Clear Block in Edit menu (Undo, separator, Copy, separator, Select All, Clear Block)
 
         searchmenu = tk.Menu(self, tearoff = 0)
         add_command(searchmenu, True, label = "Find...", 
@@ -251,6 +275,15 @@ class MenuBar(tk.Menu):
         """
         state = tk.NORMAL if has_selection else tk.DISABLED
         self.editmenu.entryconfigure(self.clear_block_index, state=state)
+
+    def update_copy_menu_label(self, has_selection: bool) -> None:
+        """Update Copy menu label to show 'Copy Block' or 'Copy All'.
+
+        Args:
+            has_selection: True if there is a selection, False otherwise.
+        """
+        label = "Copy Block" if has_selection else "Copy All"
+        self.editmenu.entryconfigure(self.copy_menu_index, label=label)
 
 class HexAreaMenu(BaseHexAreaMenu):
     class Events(enum.Enum):

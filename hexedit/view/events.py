@@ -83,3 +83,12 @@ class Events(enum.Enum):
 
     # User wants to clear selected block
     CLEAR_BLOCK        = enum.auto()
+
+    # User wants to select all bytes
+    SELECT_ALL         = enum.auto()
+
+    # User wants to copy selection/all as raw data
+    COPY_NORMAL        = enum.auto()
+
+    # User wants to copy selection/all as C source array
+    COPY_C_SOURCE      = enum.auto()

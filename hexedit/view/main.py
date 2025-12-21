@@ -82,6 +82,9 @@ class View(tk.Tk):
             MenuBar.Events.SAVE:                    self.save_file,
             MenuBar.Events.SAVE_AS:                 self.save_file_as,
             MenuBar.Events.UNDO:                    self.undo,
+            MenuBar.Events.SELECT_ALL:              self.select_all,
+            MenuBar.Events.COPY_NORMAL:             self.copy_normal,
+            MenuBar.Events.COPY_C_SOURCE:           self.copy_c_source,
             MenuBar.Events.CLEAR_BLOCK:             self.clear_block,
             MenuBar.Events.SEARCH:                  self.show_search,
             MenuBar.Events.FIND_NEXT:               self.find_next,
@@ -245,6 +248,43 @@ class View(tk.Tk):
 
         self.callbacks[Events.UNDO]()
 
+    def select_all(self, event = None) -> None:
+        """Select all bytes in the document."""
+        if not self.is_file_open:
+            return
+
+        self.hex_view.select_all()
+
+    def copy_normal(self, event = None) -> None:
+        """Copy selection or all data as raw bytes to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block
+            start, end = selection_range
+            self.callbacks[Events.COPY_SELECTION]((start, end))
+        else:
+            # Copy all data
+            self.callbacks[Events.COPY_SELECTION]((0, None))
+
+    def copy_c_source(self, event = None) -> None:
+        """Copy selection or all data as C source array to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block as C source
+            start, end = selection_range
+            self.callbacks[Events.COPY_C_SOURCE]((start, end))
+        else:
+            # Copy all data as C source
+            self.callbacks[Events.COPY_C_SOURCE]((0, None))
+
     def clear_block(self, event = None) -> None:
         """Clear the selected block."""
         if not self.is_file_open:
@@ -262,12 +302,33 @@ class View(tk.Tk):
         AboutWindow(self.root)
 
     def update_clear_block_menu(self, has_selection: bool) -> None:
-        """Update Clear Block menu state based on selection.
+        """Update Clear Block menu state and Copy menu label based on selection.
 
         Args:
             has_selection: True if there is a selection, False otherwise.
         """
         self.menubar.update_clear_block_state(has_selection)
+        self.menubar.update_copy_menu_label(has_selection)
+
+    def copy_to_clipboard(self, data: bytes) -> None:
+        """Copy raw bytes to clipboard.
+
+        Args:
+            data: Raw bytes to copy to clipboard.
+        """
+        # Convert bytes to string for clipboard
+        # Store as raw bytes represented as latin-1 to preserve binary data
+        self.root.clipboard_clear()
+        self.root.clipboard_append(data.decode('latin-1'))
+
+    def copy_to_clipboard_text(self, text: str) -> None:
+        """Copy text to clipboard.
+
+        Args:
+            text: Text string to copy to clipboard.
+        """
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
 
     def set_status(self, status: str) -> None:
         """Set the given status in the status bar.

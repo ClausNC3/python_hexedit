@@ -102,6 +102,8 @@ class Application():
             v.Events.SAVE_AS:                self.cb_save_as,
             v.Events.UNDO:                   self.cb_undo,
             v.Events.DELETE_BYTE:            self.cb_delete_byte,
+            v.Events.COPY_SELECTION:         self.cb_copy_selection,
+            v.Events.COPY_C_SOURCE:          self.cb_copy_c_source,
             v.Events.GET_CWD:                self.cb_get_cwd,
             v.Events.CANCEL_LOAD:            self.cb_cancel_load,
             v.Events.SEARCH:                 self.cb_search,
@@ -579,3 +581,88 @@ class Application():
         except Exception as e:
             self.view.display_error(f"Failed to delete:\n{str(e)}")
             self.view.set_status("Delete failed")
+
+    def cb_copy_selection(self, range_tuple) -> None:
+        """Callback for copying selection or all data to clipboard.
+
+        Args:
+            range_tuple: Tuple of (start_offset, end_offset) or (0, None) for all data.
+        """
+        if not hasattr(self, 'file_buffer') or len(self.file_buffer) == 0:
+            self.view.set_status("No file loaded")
+            return
+
+        try:
+            start, end = range_tuple
+
+            if end is None:
+                # Copy all data
+                data_to_copy = bytes(self.file_buffer)
+                self.view.set_status(f"Copied {len(data_to_copy)} bytes to clipboard")
+            else:
+                # Copy selected range
+                if start < 0 or end > len(self.file_buffer) or start >= end:
+                    self.view.set_status("Invalid offset range")
+                    return
+
+                data_to_copy = bytes(self.file_buffer[start:end])
+                self.view.set_status(f"Copied {len(data_to_copy)} bytes to clipboard")
+
+            # Copy to clipboard
+            self.view.copy_to_clipboard(data_to_copy)
+
+        except Exception as e:
+            self.view.display_error(f"Failed to copy:\n{str(e)}")
+            self.view.set_status("Copy failed")
+
+    def cb_copy_c_source(self, range_tuple) -> None:
+        """Callback for copying selection or all data as C source array.
+
+        Args:
+            range_tuple: Tuple of (start_offset, end_offset) or (0, None) for all data.
+        """
+        if not hasattr(self, 'file_buffer') or len(self.file_buffer) == 0:
+            self.view.set_status("No file loaded")
+            return
+
+        try:
+            start, end = range_tuple
+
+            if end is None:
+                # Copy all data
+                data_to_copy = bytes(self.file_buffer)
+            else:
+                # Copy selected range
+                if start < 0 or end > len(self.file_buffer) or start >= end:
+                    self.view.set_status("Invalid offset range")
+                    return
+
+                data_to_copy = bytes(self.file_buffer[start:end])
+
+            # Format as C source array
+            c_source = f"unsigned char data[{len(data_to_copy)}] = {{\n"
+
+            # Add hex values, 16 bytes per line
+            for i in range(0, len(data_to_copy), 16):
+                # Get up to 16 bytes for this line
+                line_bytes = data_to_copy[i:i+16]
+                hex_values = [f"0x{byte:02X}" for byte in line_bytes]
+
+                # Add line with proper indentation
+                c_source += "\t" + ", ".join(hex_values)
+
+                # Add comma if not the last line
+                if i + 16 < len(data_to_copy):
+                    c_source += ","
+
+                c_source += "\n"
+
+            c_source += "};"
+
+            # Copy to clipboard
+            self.view.copy_to_clipboard_text(c_source)
+            self.view.set_status(f"Copied {len(data_to_copy)} bytes as C source array to clipboard")
+
+        except Exception as e:
+            self.view.display_error(f"Failed to copy:\n{str(e)}")
+            self.view.set_status("Copy failed")

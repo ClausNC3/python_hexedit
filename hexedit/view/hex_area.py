@@ -87,6 +87,11 @@ class HexAreaView():
         self.parent = parent
         self.callbacks = callbacks
 
+        # Track custom selection state
+        self.selection_start_byte = None  # Starting byte offset of selection
+        self.selection_end_byte = None    # Ending byte offset of selection
+        self.is_selecting = False         # Whether user is currently dragging to select
+
         # Create the widgets
         
         self.top_frame = tk.Frame(parent, bg = 'white')
@@ -158,14 +163,49 @@ class HexAreaView():
         parent.grid_columnconfigure(0, weight=1)  # main content column - expands
         parent.grid_columnconfigure(1, weight=0)  # scrollbar column - fixed width
 
-        self.textbox_hex.bind("<<Selection>>", self._on_hex_selection)
-        self.textbox_ascii.bind("<<Selection>>", self._on_ascii_selection)
+        # Disable default text selection and implement custom byte-aligned selection
+        self.textbox_hex.bind("<<Selection>>", lambda e: "break")  # Disable default selection event
+        self.textbox_ascii.bind("<<Selection>>", lambda e: "break")
+
+        # Custom selection handling for byte-aligned selection in HEX
+        self.textbox_hex.bind("<ButtonPress-1>", self._on_hex_mouse_down)
+        self.textbox_hex.bind("<B1-Motion>", self._on_hex_mouse_drag)
+        self.textbox_hex.bind("<ButtonRelease-1>", self._on_hex_mouse_up)
+
+        # Custom selection handling for ASCII
+        self.textbox_ascii.bind("<ButtonPress-1>", self._on_ascii_mouse_down)
+        self.textbox_ascii.bind("<B1-Motion>", self._on_ascii_mouse_drag)
+        self.textbox_ascii.bind("<ButtonRelease-1>", self._on_ascii_mouse_up)
 
         # Bind modification events
         self.textbox_hex.bind("<Key>", self._on_hex_key_press)
         self.textbox_hex.bind("<Left>", self._on_hex_left_arrow)
         self.textbox_hex.bind("<Right>", self._on_hex_right_arrow)
+        self.textbox_hex.bind("<Up>", self._on_hex_up_arrow)
+        self.textbox_hex.bind("<Down>", self._on_hex_down_arrow)
         self.textbox_ascii.bind("<Key>", self._on_ascii_key_press)
+        self.textbox_ascii.bind("<Up>", self._on_ascii_up_arrow)
+        self.textbox_ascii.bind("<Down>", self._on_ascii_down_arrow)
+
+        # Bind Shift + arrow keys for selection in HEX view
+        self.textbox_hex.bind("<Shift-Left>", self._on_hex_shift_left)
+        self.textbox_hex.bind("<Shift-Right>", self._on_hex_shift_right)
+        self.textbox_hex.bind("<Shift-Up>", self._on_hex_shift_up)
+        self.textbox_hex.bind("<Shift-Down>", self._on_hex_shift_down)
+
+        # Bind Shift + arrow keys for selection in ASCII view
+        self.textbox_ascii.bind("<Shift-Left>", self._on_ascii_shift_left)
+        self.textbox_ascii.bind("<Shift-Right>", self._on_ascii_shift_right)
+        self.textbox_ascii.bind("<Shift-Up>", self._on_ascii_shift_up)
+        self.textbox_ascii.bind("<Shift-Down>", self._on_ascii_shift_down)
+
+        # Bind Ctrl+A for Select All in both views
+        self.textbox_hex.bind("<Control-a>", self._on_select_all)
+        self.textbox_ascii.bind("<Control-a>", self._on_select_all)
+
+        # Bind Ctrl+C for Copy in both views
+        self.textbox_hex.bind("<Control-c>", self._on_copy)
+        self.textbox_ascii.bind("<Control-c>", self._on_copy)
 
         #self.hex_rightclick_menu = HexAreaMenu(self.parent, {
         #   HexAreaMenu.Events.GET_XREF: self._get_hex_xref
@@ -186,7 +226,422 @@ class HexAreaView():
     def _on_select_locked(self, event = None) -> None:
         # Clear selected text
         event.widget.selection_clear()
-        
+
+    def _on_hex_mouse_down(self, event) -> str:
+        """Handle mouse button down in hex view - prepare for potential selection."""
+        # Get the position clicked
+        index = self.textbox_hex.index(f"@{event.x},{event.y}")
+        line, col = map(int, index.split("."))
+
+        # Calculate byte offset from position (byte-aligned)
+        # Check if clicked on the space after a byte (position 2 in each 3-char group)
+        pos_in_group = col % self.REPR_CHARS_PER_BYTE_HEX
+        if pos_in_group == 2:
+            # Clicked on space - select the next byte
+            byte_in_line = (col // self.REPR_CHARS_PER_BYTE_HEX) + 1
+        else:
+            # Clicked on hex digit - select this byte
+            byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+
+        byte_offset = ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+
+        # Save the old selection state
+        self.saved_selection_start = self.selection_start_byte
+        self.saved_selection_end = self.selection_end_byte
+
+        # Prepare for potential new selection (don't clear or select yet)
+        self.selection_start_byte = byte_offset
+        self.selection_end_byte = None  # Will be set when dragging starts
+        self.is_selecting = True
+
+        # Move cursor to the start of this byte
+        cursor_col = byte_in_line * self.REPR_CHARS_PER_BYTE_HEX
+        self.textbox_hex.mark_set(tk.INSERT, f"{line}.{cursor_col}")
+        self.textbox_hex.focus_set()
+
+        return "break"  # Prevent default behavior
+
+    def _on_hex_mouse_drag(self, event) -> str:
+        """Handle mouse drag in hex view - extend byte-aligned selection."""
+        if not self.is_selecting:
+            return "break"
+
+        # Get current position
+        index = self.textbox_hex.index(f"@{event.x},{event.y}")
+        line, col = map(int, index.split("."))
+
+        # Calculate byte offset (byte-aligned)
+        # Check if dragging over the space after a byte (position 2 in each 3-char group)
+        pos_in_group = col % self.REPR_CHARS_PER_BYTE_HEX
+        if pos_in_group == 2:
+            # On space - select the next byte
+            byte_in_line = (col // self.REPR_CHARS_PER_BYTE_HEX) + 1
+        else:
+            # On hex digit - select this byte
+            byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+
+        byte_offset = ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+
+        # Update selection end
+        self.selection_end_byte = byte_offset
+
+        # Re-render selection
+        self._clear_custom_selection()
+        self._render_custom_selection()
+
+        return "break"
+
+    def _on_hex_mouse_up(self, event) -> str:
+        """Handle mouse button release in hex view - finish selection."""
+        # If we didn't drag (selection_end_byte is still None), restore old selection
+        if self.selection_end_byte is None:
+            self.selection_start_byte = self.saved_selection_start
+            self.selection_end_byte = self.saved_selection_end
+
+        self.is_selecting = False
+        return "break"
+
+    def _on_ascii_mouse_down(self, event) -> str:
+        """Handle mouse button down in ASCII view - prepare for potential selection."""
+        # Get the position clicked
+        index = self.textbox_ascii.index(f"@{event.x},{event.y}")
+        line, col = map(int, index.split("."))
+
+        # Calculate byte offset
+        byte_offset = ((line - 1) * self.BYTES_PER_ROW) + col
+
+        # Save the old selection state
+        self.saved_selection_start = self.selection_start_byte
+        self.saved_selection_end = self.selection_end_byte
+
+        # Prepare for potential new selection (don't clear or select yet)
+        self.selection_start_byte = byte_offset
+        self.selection_end_byte = None  # Will be set when dragging starts
+        self.is_selecting = True
+
+        # Move cursor
+        self.textbox_ascii.mark_set(tk.INSERT, f"{line}.{col}")
+        self.textbox_ascii.focus_set()
+
+        return "break"
+
+    def _on_ascii_mouse_drag(self, event) -> str:
+        """Handle mouse drag in ASCII view - extend selection."""
+        if not self.is_selecting:
+            return "break"
+
+        # Get current position
+        index = self.textbox_ascii.index(f"@{event.x},{event.y}")
+        line, col = map(int, index.split("."))
+
+        # Calculate byte offset
+        byte_offset = ((line - 1) * self.BYTES_PER_ROW) + col
+
+        # Update selection end
+        self.selection_end_byte = byte_offset
+
+        # Re-render selection
+        self._clear_custom_selection()
+        self._render_custom_selection()
+
+        return "break"
+
+    def _on_ascii_mouse_up(self, event) -> str:
+        """Handle mouse button release in ASCII view - finish selection."""
+        # If we didn't drag (selection_end_byte is still None), restore old selection
+        if self.selection_end_byte is None:
+            self.selection_start_byte = self.saved_selection_start
+            self.selection_end_byte = self.saved_selection_end
+
+        self.is_selecting = False
+        return "break"
+
+    def _clear_custom_selection(self) -> None:
+        """Clear custom selection highlighting."""
+        self.textbox_hex.tag_remove(TAG_SELECTION, "1.0", tk.END)
+        self.textbox_ascii.tag_remove(TAG_SELECTION, "1.0", tk.END)
+
+    def _render_custom_selection(self) -> None:
+        """Render custom byte-aligned selection."""
+        if self.selection_start_byte is None or self.selection_end_byte is None:
+            self.root.update_clear_block_menu(False)
+            return
+
+        # Ensure start < end
+        start = min(self.selection_start_byte, self.selection_end_byte)
+        end = max(self.selection_start_byte, self.selection_end_byte)
+
+        # Calculate positions for highlighting
+        start_line = (start // self.BYTES_PER_ROW) + 1
+        start_col_in_line = start % self.BYTES_PER_ROW
+
+        end_line = (end // self.BYTES_PER_ROW) + 1
+        end_col_in_line = end % self.BYTES_PER_ROW
+
+        # Highlight in HEX view (byte-aligned)
+        hex_start_col = start_col_in_line * self.REPR_CHARS_PER_BYTE_HEX
+        hex_end_col = (end_col_in_line * self.REPR_CHARS_PER_BYTE_HEX) + 2  # +2 for the two hex digits
+
+        hex_start = f"{start_line}.{hex_start_col}"
+        hex_end = f"{end_line}.{hex_end_col}"
+        self.textbox_hex.tag_add(TAG_SELECTION, hex_start, hex_end)
+
+        # Highlight in ASCII view
+        ascii_start = f"{start_line}.{start_col_in_line}"
+        ascii_end = f"{end_line}.{end_col_in_line + 1}"  # +1 because end is exclusive
+        self.textbox_ascii.tag_add(TAG_SELECTION, ascii_start, ascii_end)
+
+        # Update menu state
+        has_selection = (start != end)
+        self.root.update_clear_block_menu(has_selection)
+
+    def select_all(self) -> None:
+        """Select all bytes in the document."""
+        if not hasattr(self, 'data') or len(self.data) == 0:
+            return
+
+        # Select from first byte to last byte
+        self.selection_start_byte = 0
+        self.selection_end_byte = len(self.data) - 1
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+
+        # Set cursor to the beginning
+        self.textbox_hex.mark_set(tk.INSERT, "1.0")
+        self.textbox_hex.see("1.0")
+
+    def _on_select_all(self, event) -> str:
+        """Handle Ctrl+A event - select all bytes."""
+        self.select_all()
+        return "break"  # Prevent default behavior
+
+    def _on_copy(self, event) -> str:
+        """Handle Ctrl+C event - copy selection or all."""
+        from .events import Events
+        # Get selection range
+        selection_range = self._get_selection_range()
+        if selection_range:
+            # Copy selected block
+            start, end = selection_range
+            self.callbacks[Events.COPY_SELECTION]((start, end))
+        else:
+            # Copy all data
+            self.callbacks[Events.COPY_SELECTION]((0, None))
+        return "break"  # Prevent default behavior
+
+    def _get_current_byte_offset_hex(self) -> int:
+        """Get the byte offset of current cursor position in hex view."""
+        cursor_pos = self.textbox_hex.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+        byte_in_line = col // self.REPR_CHARS_PER_BYTE_HEX
+        return ((line - 1) * self.BYTES_PER_ROW) + byte_in_line
+
+    def _get_current_byte_offset_ascii(self) -> int:
+        """Get the byte offset of current cursor position in ASCII view."""
+        cursor_pos = self.textbox_ascii.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+        return ((line - 1) * self.BYTES_PER_ROW) + col
+
+    def _on_hex_shift_left(self, event) -> str:
+        """Handle Shift+Left in hex view - extend selection left by one byte."""
+        current_byte = self._get_current_byte_offset_hex()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor left (skip spaces)
+        cursor_pos = self.textbox_hex.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+        pos_in_byte = col % self.REPR_CHARS_PER_BYTE_HEX
+
+        if col > 0:
+            if pos_in_byte == 0:
+                new_col = col - 1
+            else:
+                new_col = col - 1
+            self.textbox_hex.mark_set(tk.INSERT, f"{line}.{new_col}")
+
+        # Update selection end to new byte position (after cursor moved)
+        new_byte = self._get_current_byte_offset_hex()
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_hex_shift_right(self, event) -> str:
+        """Handle Shift+Right in hex view - extend selection right by one byte."""
+        current_byte = self._get_current_byte_offset_hex()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor right (skip spaces)
+        cursor_pos = self.textbox_hex.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+        pos_in_byte = col % self.REPR_CHARS_PER_BYTE_HEX
+
+        if pos_in_byte == 1:
+            new_col = col + 2  # Skip space
+        else:
+            new_col = col + 1
+
+        self.textbox_hex.mark_set(tk.INSERT, f"{line}.{new_col}")
+
+        # Update selection end to new byte position (after cursor moved)
+        new_byte = self._get_current_byte_offset_hex()
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_hex_shift_up(self, event) -> str:
+        """Handle Shift+Up in hex view - extend selection up by one row."""
+        current_byte = self._get_current_byte_offset_hex()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor up
+        cursor_pos = self.textbox_hex.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        if line > 1:
+            self.textbox_hex.mark_set(tk.INSERT, f"{line - 1}.{col}")
+
+        # Update selection end
+        new_byte = max(0, current_byte - self.BYTES_PER_ROW)
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_hex_shift_down(self, event) -> str:
+        """Handle Shift+Down in hex view - extend selection down by one row."""
+        current_byte = self._get_current_byte_offset_hex()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor down
+        cursor_pos = self.textbox_hex.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        self.textbox_hex.mark_set(tk.INSERT, f"{line + 1}.{col}")
+
+        # Update selection end
+        new_byte = current_byte + self.BYTES_PER_ROW
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_ascii_shift_left(self, event) -> str:
+        """Handle Shift+Left in ASCII view - extend selection left by one byte."""
+        current_byte = self._get_current_byte_offset_ascii()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor left
+        cursor_pos = self.textbox_ascii.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        if col > 0:
+            self.textbox_ascii.mark_set(tk.INSERT, f"{line}.{col - 1}")
+
+        # Update selection end
+        new_byte = max(0, current_byte - 1)
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_ascii_shift_right(self, event) -> str:
+        """Handle Shift+Right in ASCII view - extend selection right by one byte."""
+        current_byte = self._get_current_byte_offset_ascii()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor right
+        cursor_pos = self.textbox_ascii.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        self.textbox_ascii.mark_set(tk.INSERT, f"{line}.{col + 1}")
+
+        # Update selection end
+        new_byte = current_byte + 1
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_ascii_shift_up(self, event) -> str:
+        """Handle Shift+Up in ASCII view - extend selection up by one row."""
+        current_byte = self._get_current_byte_offset_ascii()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor up
+        cursor_pos = self.textbox_ascii.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        if line > 1:
+            self.textbox_ascii.mark_set(tk.INSERT, f"{line - 1}.{col}")
+
+        # Update selection end
+        new_byte = max(0, current_byte - self.BYTES_PER_ROW)
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
+    def _on_ascii_shift_down(self, event) -> str:
+        """Handle Shift+Down in ASCII view - extend selection down by one row."""
+        current_byte = self._get_current_byte_offset_ascii()
+
+        # Start selection if not already selecting
+        if self.selection_start_byte is None:
+            self.selection_start_byte = current_byte
+            self.selection_end_byte = current_byte
+
+        # Move cursor down
+        cursor_pos = self.textbox_ascii.index(tk.INSERT)
+        line, col = map(int, cursor_pos.split("."))
+
+        self.textbox_ascii.mark_set(tk.INSERT, f"{line + 1}.{col}")
+
+        # Update selection end
+        new_byte = current_byte + self.BYTES_PER_ROW
+        self.selection_end_byte = new_byte
+
+        self._clear_custom_selection()
+        self._render_custom_selection()
+        return "break"
+
     def _on_ascii_selection(self, event) -> None:
         """Highlight HEX view upon selection of ASCII view."""
         self.textbox_ascii.tag_remove(TAG_SELECTION, "1.0", tk.END)
@@ -229,33 +684,19 @@ class HexAreaView():
         Returns:
             Tuple of (start_offset, end_offset) or None if no selection.
         """
-        try:
-            # Try to get selection from hex view first
-            hex_start_line, hex_start_char = map(int, self.textbox_hex.index(tk.SEL_FIRST).split("."))
-            hex_end_line, hex_end_char = map(int, self.textbox_hex.index(tk.SEL_LAST).split("."))
+        # Use custom selection tracking
+        if self.selection_start_byte is None or self.selection_end_byte is None:
+            return None
 
-            # Calculate byte offsets
-            start_byte_in_line = hex_start_char // self.REPR_CHARS_PER_BYTE_HEX
-            start_offset = ((hex_start_line - 1) * self.BYTES_PER_ROW) + start_byte_in_line
+        # Ensure start < end
+        start = min(self.selection_start_byte, self.selection_end_byte)
+        end = max(self.selection_start_byte, self.selection_end_byte)
 
-            # SEL_LAST is after the last selected char, so we need to adjust
-            # Use same logic as _on_hex_selection for consistency
-            end_byte_in_line = ((hex_end_char - 1) // self.REPR_CHARS_PER_BYTE_HEX) + 1
-            end_offset = ((hex_end_line - 1) * self.BYTES_PER_ROW) + end_byte_in_line
+        # Only return range if there's an actual selection (not just a click)
+        if start == end:
+            return None
 
-            return (start_offset, end_offset)
-        except tk.TclError:
-            # No selection in hex view, try ASCII view
-            try:
-                ascii_start_line, ascii_start_char = map(int, self.textbox_ascii.index(tk.SEL_FIRST).split("."))
-                ascii_end_line, ascii_end_char = map(int, self.textbox_ascii.index(tk.SEL_LAST).split("."))
-
-                start_offset = ((ascii_start_line - 1) * self.BYTES_PER_ROW) + ascii_start_char
-                end_offset = ((ascii_end_line - 1) * self.BYTES_PER_ROW) + ascii_end_char
-
-                return (start_offset, end_offset)
-            except tk.TclError:
-                return None
+        return (start, end + 1)  # +1 to make end exclusive for slicing
 
     def has_selection(self) -> bool:
         """Check if there is currently a selection.
@@ -278,6 +719,12 @@ class HexAreaView():
 
     def _on_hex_left_arrow(self, event) -> str:
         """Handle left arrow key in hex view - skip spaces."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+
         try:
             cursor_pos = self.textbox_hex.index(tk.INSERT)
             line, col = map(int, cursor_pos.split("."))
@@ -299,6 +746,12 @@ class HexAreaView():
 
     def _on_hex_right_arrow(self, event) -> str:
         """Handle right arrow key in hex view - skip spaces."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+
         try:
             cursor_pos = self.textbox_hex.index(tk.INSERT)
             line, col = map(int, cursor_pos.split("."))
@@ -321,6 +774,42 @@ class HexAreaView():
         except Exception:
             pass
         return None
+
+    def _on_hex_up_arrow(self, event) -> str:
+        """Handle up arrow key in hex view - clear selection."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+        return None  # Let default behavior handle navigation
+
+    def _on_hex_down_arrow(self, event) -> str:
+        """Handle down arrow key in hex view - clear selection."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+        return None  # Let default behavior handle navigation
+
+    def _on_ascii_up_arrow(self, event) -> str:
+        """Handle up arrow key in ASCII view - clear selection."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+        return None  # Let default behavior handle navigation
+
+    def _on_ascii_down_arrow(self, event) -> str:
+        """Handle down arrow key in ASCII view - clear selection."""
+        # Clear selection when using arrow keys without Shift
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self._clear_custom_selection()
+        self.root.update_clear_block_menu(False)
+        return None  # Let default behavior handle navigation
 
     def _on_hex_key_press(self, event) -> str:
         """Handle hex textbox key press with overwrite mode."""
@@ -524,6 +1013,14 @@ class HexAreaView():
             for tag in TAGS:
                 textbox.tag_remove(tag, "1.0", tk.END)
 
+        # Clear custom selection state
+        self.selection_start_byte = None
+        self.selection_end_byte = None
+        self.is_selecting = False
+
+        # Clear data reference
+        self.data = None
+
         # Update menu state to reflect no selection
         self.root.update_clear_block_menu(False)
 
@@ -544,6 +1041,9 @@ class HexAreaView():
 
         """
         self.abort_load = False
+
+        # Store the byte array so we can use it for select_all
+        self.data = byte_arr
 
         self.hex_content_done_cb = done_cb
         self.hex_thread_queue = queue.Queue()
