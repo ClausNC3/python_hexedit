@@ -250,7 +250,10 @@ class Application():
     
     def cb_goto(self, offset: int) -> None:
         """Callback for an event where the user wants to jump to a given offset."""
-        if offset < 0 or offset >= len(self.file_mmap):
+        # Use file_buffer if available (for modified files), otherwise use file_mmap
+        buffer_to_check = self.file_buffer if hasattr(self, 'file_buffer') else self.file_mmap
+
+        if offset < 0 or offset >= len(buffer_to_check):
             raise ValueError("Offset out of range")
         self.view.make_visible(offset, highlight = True)
         self.view.set_status(f"Jumping to offset {hex(offset)} ({offset})")
