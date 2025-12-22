@@ -61,7 +61,7 @@ class View(tk.Tk):
 
         self.title(title)
         self.resizable(width = True, height = True)
-        self.geometry('650x720')
+        self.geometry('790x720')
 
         try:
             with importlib.resources.path(f"{__package__}.assets", "pytai.ico") as icon_path:
