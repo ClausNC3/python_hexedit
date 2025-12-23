@@ -84,7 +84,11 @@ class View(tk.Tk):
             MenuBar.Events.UNDO:                    self.undo,
             MenuBar.Events.SELECT_ALL:              self.select_all,
             MenuBar.Events.COPY_NORMAL:             self.copy_normal,
+            MenuBar.Events.COPY_HEX_VALUES:         self.copy_hex_values,
+            MenuBar.Events.COPY_EDITOR_DISPLAY:     self.copy_editor_display,
+            MenuBar.Events.COPY_GREP_HEX:           self.copy_grep_hex,
             MenuBar.Events.COPY_C_SOURCE:           self.copy_c_source,
+            MenuBar.Events.COPY_PASCAL_SOURCE:      self.copy_pascal_source,
             MenuBar.Events.CLEAR_BLOCK:             self.clear_block,
             MenuBar.Events.SEARCH:                  self.show_search,
             MenuBar.Events.FIND_NEXT:               self.find_next,
@@ -270,6 +274,51 @@ class View(tk.Tk):
             # Copy all data
             self.callbacks[Events.COPY_SELECTION]((0, None))
 
+    def copy_hex_values(self, event = None) -> None:
+        """Copy selection or all data as hex values string to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block as hex values
+            start, end = selection_range
+            self.callbacks[Events.COPY_HEX_VALUES]((start, end))
+        else:
+            # Copy all data as hex values
+            self.callbacks[Events.COPY_HEX_VALUES]((0, None))
+
+    def copy_editor_display(self, event = None) -> None:
+        """Copy selection or all data as editor display format to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block as editor display
+            start, end = selection_range
+            self.callbacks[Events.COPY_EDITOR_DISPLAY]((start, end))
+        else:
+            # Copy all data as editor display
+            self.callbacks[Events.COPY_EDITOR_DISPLAY]((0, None))
+
+    def copy_grep_hex(self, event = None) -> None:
+        """Copy selection or all data as GREP hex format to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block as GREP hex
+            start, end = selection_range
+            self.callbacks[Events.COPY_GREP_HEX]((start, end))
+        else:
+            # Copy all data as GREP hex
+            self.callbacks[Events.COPY_GREP_HEX]((0, None))
+
     def copy_c_source(self, event = None) -> None:
         """Copy selection or all data as C source array to clipboard."""
         if not self.is_file_open:
@@ -284,6 +333,21 @@ class View(tk.Tk):
         else:
             # Copy all data as C source
             self.callbacks[Events.COPY_C_SOURCE]((0, None))
+
+    def copy_pascal_source(self, event = None) -> None:
+        """Copy selection or all data as Pascal source array to clipboard."""
+        if not self.is_file_open:
+            return
+
+        # Get selection range
+        selection_range = self.hex_view._get_selection_range()
+        if selection_range:
+            # Copy selected block as Pascal source
+            start, end = selection_range
+            self.callbacks[Events.COPY_PASCAL_SOURCE]((start, end))
+        else:
+            # Copy all data as Pascal source
+            self.callbacks[Events.COPY_PASCAL_SOURCE]((0, None))
 
     def clear_block(self, event = None) -> None:
         """Clear the selected block."""

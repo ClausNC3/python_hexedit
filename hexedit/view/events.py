@@ -90,5 +90,17 @@ class Events(enum.Enum):
     # User wants to copy selection/all as raw data
     COPY_NORMAL        = enum.auto()
 
+    # User wants to copy selection/all as hex values string
+    COPY_HEX_VALUES    = enum.auto()
+
+    # User wants to copy selection/all as editor display format
+    COPY_EDITOR_DISPLAY = enum.auto()
+
+    # User wants to copy selection/all as GREP hex format
+    COPY_GREP_HEX      = enum.auto()
+
     # User wants to copy selection/all as C source array
     COPY_C_SOURCE      = enum.auto()
+
+    # User wants to copy selection/all as Pascal source array
+    COPY_PASCAL_SOURCE = enum.auto()

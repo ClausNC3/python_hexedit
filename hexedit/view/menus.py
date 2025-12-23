@@ -82,8 +82,20 @@ class MenuBar(tk.Menu):
         # User wants to copy selection/all as raw data
         COPY_NORMAL             = enum.auto()
 
+        # User wants to copy selection/all as hex values string
+        COPY_HEX_VALUES         = enum.auto()
+
+        # User wants to copy selection/all as editor display format
+        COPY_EDITOR_DISPLAY     = enum.auto()
+
+        # User wants to copy selection/all as GREP hex format
+        COPY_GREP_HEX           = enum.auto()
+
         # User wants to copy selection/all as C source array
         COPY_C_SOURCE           = enum.auto()
+
+        # User wants to copy selection/all as Pascal source array
+        COPY_PASCAL_SOURCE      = enum.auto()
 
         # User wants to search file
         SEARCH                  = enum.auto()
@@ -215,8 +227,17 @@ class MenuBar(tk.Menu):
         add_command(copymenu, True, label = "Normally",
                     command = lambda: self.callbacks[self.Events.COPY_NORMAL](None), accelerator = "Ctrl+C")
         copymenu.add_separator()
+        add_command(copymenu, True, label = "Hex Values",
+                    command = lambda: self.callbacks[self.Events.COPY_HEX_VALUES](None))
+        add_command(copymenu, True, label = "Editor Display",
+                    command = lambda: self.callbacks[self.Events.COPY_EDITOR_DISPLAY](None))
+        copymenu.add_separator()
+        add_command(copymenu, True, label = "GREP Hex",
+                    command = lambda: self.callbacks[self.Events.COPY_GREP_HEX](None))
         add_command(copymenu, True, label = "C Source",
                     command = lambda: self.callbacks[self.Events.COPY_C_SOURCE](None))
+        add_command(copymenu, True, label = "Pascal Source",
+                    command = lambda: self.callbacks[self.Events.COPY_PASCAL_SOURCE](None))
         editmenu.add_cascade(label = "Copy All", menu = copymenu)
         self.copy_menu_index = 2  # Index of Copy menu item in Edit menu (after Undo and separator)
 
@@ -247,8 +268,16 @@ class MenuBar(tk.Menu):
         self.add_cascade(label = "Search", menu = searchmenu)
         
         viewmenu = tk.Menu(self, tearoff = 0)
-        add_command(viewmenu, True, label = "Refresh", 
+        add_command(viewmenu, True, label = "Refresh",
                     command = lambda: self.callbacks[self.Events.REFRESH](None), accelerator = "F5")
+
+        analysismenu = tk.Menu(self, tearoff = 0)
+
+        # NAND Flash submenu
+        nandflashmenu = tk.Menu(analysismenu, tearoff = 0)
+        analysismenu.add_cascade(label = "NAND Flash", menu = nandflashmenu)
+
+        self.add_cascade(label = "Analysis", menu = analysismenu)
 
         helpmenu = tk.Menu(self, tearoff = 0)
         add_command(helpmenu, False, label = "About...", command = self.show_about)
