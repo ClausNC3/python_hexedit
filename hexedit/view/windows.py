@@ -30,11 +30,12 @@ import re
 import webbrowser
 
 from tkinter import messagebox, filedialog
-from typing import Callable
+from typing import Callable, Optional
 
 
 from .widgets import *
 from ..common import *
+from ..nand import NAND_CONFIGS
 
 class BaseWindow():
     """Base class for windows."""
@@ -388,4 +389,77 @@ class AboutWindow(BaseWindow):
 
     def close(self, event = None) -> None:
         """Close the window."""
+        self.window.destroy()
+
+
+class NANDSelectWindow(BaseWindow):
+    """Window for selecting NAND flash configuration."""
+
+    def __init__(self, parent, callback: Callable[[Optional[str]], None]):
+        """Instantiate the class.
+
+        Args:
+            parent:
+                Parent tk class.
+            callback:
+                Callback to call with selected config name (or None if cancelled).
+        """
+        self.parent = parent
+        self.callback = callback
+        self.selected_config = None
+
+        self.window = tk.Toplevel(self.parent)
+        self.window.title("Select NAND Flash Configuration")
+        self.window.resizable(0, 0)
+        self.window.transient(self.parent)
+        self.window.grab_set()
+
+        # Main frame
+        frame = tk.Frame(self.window)
+        frame.pack(padx = 20, pady = 20)
+
+        # Type label and dropdown
+        label_frame = tk.Frame(frame)
+        label_frame.pack(pady = (0, 15))
+
+        type_label = tk.Label(label_frame, text = "Type:")
+        type_label.pack(side = tk.LEFT, padx = (0, 10))
+
+        # Get config names from NAND_CONFIGS
+        config_names = [config.name for config in NAND_CONFIGS]
+
+        self.config_var = tk.StringVar()
+        if config_names:
+            self.config_var.set(config_names[0])
+
+        self.config_dropdown = ttk.Combobox(label_frame, textvariable = self.config_var,
+                                           values = config_names, state = "readonly", width = 30)
+        self.config_dropdown.pack(side = tk.LEFT)
+
+        # Button frame
+        button_frame = tk.Frame(frame)
+        button_frame.pack()
+
+        ok_button = tk.Button(button_frame, text = "OK", command = self.ok, width = 10)
+        ok_button.pack(side = tk.LEFT, padx = (0, 10))
+
+        cancel_button = tk.Button(button_frame, text = "Cancel", command = self.cancel, width = 10)
+        cancel_button.pack(side = tk.LEFT)
+
+        self.window.bind('<Return>', lambda e: self.ok())
+        self.window.bind('<Escape>', lambda e: self.cancel())
+        self.window.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        self.center_window(self.parent)
+        self.window.focus_force()
+
+    def ok(self) -> None:
+        """Handle OK button click."""
+        self.selected_config = self.config_var.get()
+        self.callback(self.selected_config)
+        self.window.destroy()
+
+    def cancel(self) -> None:
+        """Handle Cancel button click."""
+        self.callback(None)
         self.window.destroy()

@@ -104,3 +104,9 @@ class Events(enum.Enum):
 
     # User wants to copy selection/all as Pascal source array
     COPY_PASCAL_SOURCE = enum.auto()
+
+    # User wants to select NAND flash configuration
+    NAND_SELECT        = enum.auto()
+
+    # User wants to calculate ECC for NAND flash
+    NAND_CALCULATE_ECC = enum.auto()

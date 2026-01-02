@@ -90,6 +90,8 @@ class View(tk.Tk):
             MenuBar.Events.COPY_C_SOURCE:           self.copy_c_source,
             MenuBar.Events.COPY_PASCAL_SOURCE:      self.copy_pascal_source,
             MenuBar.Events.CLEAR_BLOCK:             self.clear_block,
+            MenuBar.Events.NAND_SELECT:             self.show_nand_select,
+            MenuBar.Events.NAND_CALCULATE_ECC:      lambda e: self.callbacks[Events.NAND_CALCULATE_ECC](e),
             MenuBar.Events.SEARCH:                  self.show_search,
             MenuBar.Events.FIND_NEXT:               self.find_next,
             MenuBar.Events.FIND_PREV:               self.find_prev,
@@ -230,6 +232,10 @@ class View(tk.Tk):
             return
 
         SearchWindow(self.root, self.callbacks[Events.SEARCH])
+
+    def show_nand_select(self, event = None) -> None:
+        """Show the 'NAND Select' window"""
+        NANDSelectWindow(self.root, self.callbacks[Events.NAND_SELECT])
 
     def find_next(self, event = None) -> None:
         """Find the next occurrance of the search term."""
@@ -373,6 +379,14 @@ class View(tk.Tk):
         """
         self.menubar.update_clear_block_state(has_selection)
         self.menubar.update_copy_menu_label(has_selection)
+
+    def enable_nand_calculate_ecc(self, enable: bool) -> None:
+        """Enable or disable the NAND Calculate Ecc menu item.
+
+        Args:
+            enable: True to enable, False to disable.
+        """
+        self.menubar.enable_nand_calculate_ecc(enable)
 
     def copy_to_clipboard(self, data: bytes) -> None:
         """Copy raw bytes to clipboard.

@@ -108,6 +108,8 @@ class Application():
             v.Events.COPY_GREP_HEX:          self.cb_copy_grep_hex,
             v.Events.COPY_C_SOURCE:          self.cb_copy_c_source,
             v.Events.COPY_PASCAL_SOURCE:     self.cb_copy_pascal_source,
+            v.Events.NAND_SELECT:            self.cb_nand_select,
+            v.Events.NAND_CALCULATE_ECC:     self.cb_nand_calculate_ecc,
             v.Events.GET_CWD:                self.cb_get_cwd,
             v.Events.CANCEL_LOAD:            self.cb_cancel_load,
             v.Events.SEARCH:                 self.cb_search,
@@ -887,3 +889,32 @@ class Application():
         except Exception as e:
             self.view.display_error(f"Failed to copy:\n{str(e)}")
             self.view.set_status("Copy failed")
+
+    def cb_nand_select(self, selected_config_name) -> None:
+        """Callback for NAND flash configuration selection.
+
+        Args:
+            selected_config_name: Name of selected config or None if cancelled.
+        """
+        if selected_config_name is None:
+            # User cancelled
+            self.view.set_status("NAND selection cancelled")
+            return
+
+        # Store the selected config name for later use
+        self.selected_nand_config = selected_config_name
+        self.view.enable_nand_calculate_ecc(True)
+        self.view.set_status(f"Selected NAND configuration: {selected_config_name}")
+
+    def cb_nand_calculate_ecc(self, event) -> None:
+        """Callback for NAND Calculate ECC.
+
+        Args:
+            event: Event (not used).
+        """
+        if not hasattr(self, 'selected_nand_config') or self.selected_nand_config is None:
+            self.view.display_error("No NAND configuration selected.\nPlease select a configuration first.")
+            return
+
+        # TODO: Implement ECC calculation
+        self.view.set_status(f"Calculate ECC for {self.selected_nand_config} - Not yet implemented")

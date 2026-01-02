@@ -97,6 +97,12 @@ class MenuBar(tk.Menu):
         # User wants to copy selection/all as Pascal source array
         COPY_PASCAL_SOURCE      = enum.auto()
 
+        # User wants to select NAND flash configuration
+        NAND_SELECT             = enum.auto()
+
+        # User wants to calculate ECC for NAND flash
+        NAND_CALCULATE_ECC      = enum.auto()
+
         # User wants to search file
         SEARCH                  = enum.auto()
 
@@ -274,8 +280,12 @@ class MenuBar(tk.Menu):
         analysismenu = tk.Menu(self, tearoff = 0)
 
         # NAND Flash submenu
-        nandflashmenu = tk.Menu(analysismenu, tearoff = 0)
-        analysismenu.add_cascade(label = "NAND Flash", menu = nandflashmenu)
+        self.nandflashmenu = tk.Menu(analysismenu, tearoff = 0)
+        add_command(self.nandflashmenu, True, label = "Select",
+                    command = lambda: self.callbacks[self.Events.NAND_SELECT](None))
+        add_command(self.nandflashmenu, False, label = "Calculate Ecc...",
+                    command = lambda: self.callbacks[self.Events.NAND_CALCULATE_ECC](None))
+        analysismenu.add_cascade(label = "NAND Flash", menu = self.nandflashmenu)
 
         self.add_cascade(label = "Analysis", menu = analysismenu)
 
@@ -284,6 +294,7 @@ class MenuBar(tk.Menu):
         self.add_cascade(label = "Help", menu = helpmenu)
 
         self.toggle_loaded_file_commands(enable = False)
+        self.enable_nand_calculate_ecc(enable = False)
 
     def show_about(self) -> None:
         """Show the "About" window."""
@@ -313,6 +324,15 @@ class MenuBar(tk.Menu):
         """
         label = "Copy Block" if has_selection else "Copy All"
         self.editmenu.entryconfigure(self.copy_menu_index, label=label)
+
+    def enable_nand_calculate_ecc(self, enable: bool) -> None:
+        """Enable or disable the Calculate Ecc menu item.
+
+        Args:
+            enable: True to enable, False to disable.
+        """
+        state = tk.NORMAL if enable else tk.DISABLED
+        self.nandflashmenu.entryconfigure("Calculate Ecc...", state=state)
 
 class HexAreaMenu(BaseHexAreaMenu):
     class Events(enum.Enum):
