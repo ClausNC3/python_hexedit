@@ -125,6 +125,7 @@ class View(tk.Tk):
         # Delegate a few interface functions directly to internal implementation
         self.populate_hex_view = self.hex_view.populate_hex_view
         self.make_visible = self.hex_view.make_visible
+        self.update_byte_display = self.hex_view.update_byte_display
 
         # Initialize Clear Block menu state to disabled
         self.menubar.update_clear_block_state(False)
@@ -420,12 +421,22 @@ class View(tk.Tk):
     @staticmethod
     def display_error(msg: str) -> None:
         """Display the given error.
-        
+
         Args:
             msg:
                 Error message to display.
         """
         messagebox.showerror("Error", msg)
+
+    @staticmethod
+    def display_info(msg: str) -> None:
+        """Display the given information.
+
+        Args:
+            msg:
+                Information message to display.
+        """
+        messagebox.showinfo("Information", msg)
 
     @staticmethod
     def display_warning(msg: str) -> None:

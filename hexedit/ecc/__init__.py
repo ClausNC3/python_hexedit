@@ -22,5 +22,6 @@ License:
     SOFTWARE.
 """
 from .type import ECCType
+from .bch import calculate_bch_ecc, verify_bch_ecc, correct_bch_errors
 
-__all__ = ['ECCType']
+__all__ = ['ECCType', 'calculate_bch_ecc', 'verify_bch_ecc', 'correct_bch_errors']

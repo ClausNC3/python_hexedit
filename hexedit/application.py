@@ -41,6 +41,8 @@ from . import utils
 
 from .common import *
 from .utils import *
+from .nand import get_config_by_name, extract_data_from_page, extract_ecc_from_page
+from .ecc import ECCType, calculate_bch_ecc, verify_bch_ecc, correct_bch_errors
 
 class SearchContext:
     """Context for searching in binary data."""
@@ -907,7 +909,7 @@ class Application():
         self.view.set_status(f"Selected NAND configuration: {selected_config_name}")
 
     def cb_nand_calculate_ecc(self, event) -> None:
-        """Callback for NAND Calculate ECC.
+        """Callback for NAND Calculate ECC - scans entire file.
 
         Args:
             event: Event (not used).
@@ -916,5 +918,115 @@ class Application():
             self.view.display_error("No NAND configuration selected.\nPlease select a configuration first.")
             return
 
-        # TODO: Implement ECC calculation
-        self.view.set_status(f"Calculate ECC for {self.selected_nand_config} - Not yet implemented")
+        if not hasattr(self, 'file_buffer') or len(self.file_buffer) == 0:
+            self.view.display_error("No file loaded.\nPlease open a file first.")
+            return
+
+        # Get the selected NAND configuration
+        config = get_config_by_name(self.selected_nand_config)
+        if config is None:
+            self.view.display_error(f"Configuration '{self.selected_nand_config}' not found.")
+            return
+
+        # Check if BCH ECC type
+        if config.ecc_type != ECCType.BCH:
+            self.view.display_error(f"ECC type {config.ecc_type.name} is not supported yet.\nOnly BCH is currently supported.")
+            return
+
+        try:
+            # Calculate page size (total size including data, ECC, BBM, padding)
+            page_size = config.data_size + config.ecc_size + config.bbm_size + config.padding_size
+
+            if len(self.file_buffer) < page_size:
+                self.view.display_error(f"File is too small.\nExpected at least {page_size} bytes for one page, got {len(self.file_buffer)} bytes.")
+                return
+
+            # Calculate total number of pages
+            total_pages = len(self.file_buffer) // page_size
+
+            # Statistics counters
+            pages_valid = 0
+            pages_corrected = 0
+            pages_corrupted = 0  # Too many errors to correct
+            pages_empty = 0
+            total_errors_corrected = 0
+
+            # Process each page
+            for page_num in range(total_pages):
+                page_offset = page_num * page_size
+                page_data = bytes(self.file_buffer[page_offset:page_offset + page_size])
+
+                # Check if page is empty (all 0xFF)
+                if all(byte == 0xFF for byte in page_data):
+                    pages_empty += 1
+                    continue
+
+                # Extract data bytes based on config ranges
+                data = extract_data_from_page(page_data, config)
+
+                # Extract existing ECC from page
+                existing_ecc = extract_ecc_from_page(page_data, config)
+
+                # Check if existing ECC matches calculated ECC
+                ecc_valid = verify_bch_ecc(data, existing_ecc)
+
+                if ecc_valid:
+                    pages_valid += 1
+                else:
+                    # Try to correct errors
+                    corrected_data, num_errors = correct_bch_errors(data, existing_ecc)
+
+                    if num_errors == -1:
+                        # Too many errors to correct
+                        pages_corrupted += 1
+                    elif num_errors >= 0:
+                        # Errors corrected successfully
+                        pages_corrected += 1
+                        total_errors_corrected += num_errors
+
+                        # Write corrected data back to buffer
+                        corrected_data_index = 0
+                        for start, end in config.data_ranges:
+                            for offset in range(start, end + 1):
+                                if corrected_data_index < len(corrected_data):
+                                    buffer_offset = page_offset + offset
+                                    if buffer_offset >= len(self.file_buffer):
+                                        corrected_data_index += 1
+                                        continue
+
+                                    old_value = self.file_buffer[buffer_offset]
+                                    new_value = corrected_data[corrected_data_index]
+
+                                    if old_value is None or new_value is None:
+                                        corrected_data_index += 1
+                                        continue
+
+                                    if old_value != new_value:
+                                        # Add to undo stack
+                                        self.undo_stack.append(('modify', buffer_offset, old_value))
+                                        # Update buffer
+                                        self.file_buffer[buffer_offset] = new_value
+                                        # Update the view directly for this byte
+                                        self.view.update_byte_display(buffer_offset, new_value)
+                                    corrected_data_index += 1
+
+            # Mark file as modified if any corrections were made
+            if pages_corrected > 0:
+                self.is_modified = True
+
+            # Build summary report
+            result_msg = f"BCH ECC Analysis Report\n\n"
+            result_msg += f"Configuration: {config.name}\n"
+            result_msg += f"Page size: {page_size} bytes\n"
+            result_msg += f"Total pages checked: {total_pages}\n\n"
+            result_msg += f"Valid pages: {pages_valid}\n"
+            result_msg += f"Corrected pages: {pages_corrected} ({total_errors_corrected} bit errors)\n"
+            result_msg += f"Corrupted pages: {pages_corrupted} (could not correct)\n"
+            result_msg += f"Empty pages: {pages_empty}\n"
+
+            self.view.display_info(result_msg)
+            self.view.set_status(f"Scanned {total_pages} pages: {pages_valid} valid, {pages_corrected} corrected, {pages_corrupted} corrupted, {pages_empty} empty")
+
+        except Exception as e:
+            self.view.display_error(f"Failed to calculate ECC:\n{str(e)}")
+            self.view.set_status("ECC calculation failed")

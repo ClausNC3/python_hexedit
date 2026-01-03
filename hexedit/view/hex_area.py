@@ -1274,4 +1274,42 @@ class HexAreaView():
             location_ascii = self._offset_to_line_column(self.REPR_CHARS_PER_BYTE_ASCII, offset)
             self.textbox_ascii.tag_add(TAG_GOTO, location_ascii, f"{location_ascii}+{length}c")
 
-        
+    def update_byte_display(self, offset: int, byte_value: int) -> None:
+        """Update the display of a single byte in both hex and ASCII views.
+
+        Args:
+            offset: Byte offset in the file
+            byte_value: New byte value (0-255)
+        """
+        # Calculate line and byte position
+        line = (offset // self.BYTES_PER_ROW) + 1
+        byte_in_line = offset % self.BYTES_PER_ROW
+
+        # Calculate hex position
+        hex_col_start = byte_in_line * self.REPR_CHARS_PER_BYTE_HEX
+        hex_pos_start = f"{line}.{hex_col_start}"
+        hex_pos_end = f"{line}.{hex_col_start + 2}"
+
+        # Read current value to verify it needs updating
+        try:
+            current_hex = self.textbox_hex.get(hex_pos_start, hex_pos_end)
+            new_hex = f"{byte_value:02X}"
+
+            if current_hex != new_hex:
+                # Update hex view
+                self.textbox_hex.delete(hex_pos_start, hex_pos_end)
+                self.textbox_hex.insert(hex_pos_start, new_hex)
+
+                # Update ASCII view
+                ascii_char = chr(byte_value) if 32 <= byte_value <= 127 else "."
+                ascii_pos = f"{line}.{byte_in_line}"
+                self.textbox_ascii.delete(ascii_pos, f"{ascii_pos}+1c")
+                self.textbox_ascii.insert(ascii_pos, ascii_char)
+
+                # Force update
+                self.textbox_hex.update_idletasks()
+                self.textbox_ascii.update_idletasks()
+        except tk.TclError:
+            # Position doesn't exist yet, ignore
+            pass
+
