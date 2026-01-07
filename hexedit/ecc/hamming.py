@@ -250,8 +250,7 @@ def _correct_hamming_512(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
         Tuple of (corrected_data, corrected_ecc, num_errors_corrected)
         num_errors_corrected:
             0 = no errors
-            1 = single-bit error corrected in data
-            2 = corrected single bit error in ECC
+            1 = single-bit error corrected
             -1 = uncorrectable error (multiple bits)
     """
 
@@ -308,7 +307,7 @@ def _correct_hamming_512(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
     # check for recoverable error in ECC
     if ((hweight8(d0) + hweight8(d1) + hweight8(d2)) == 1):
         # corrected single bit error in ECC
-        return (data, calculated_ecc, 2)
+        return (data, calculated_ecc, 1)
 
     # unrecoverable error
     return (data, data_ecc, -1)
@@ -328,8 +327,7 @@ def _correct_hamming_256(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
         Tuple of (corrected_data, corrected_ecc, num_errors_corrected)
         num_errors_corrected:
             0 = no errors
-            1 = single-bit error corrected in data
-            2 = corrected single bit error in ECC
+            1 = single-bit error corrected
             -1 = uncorrectable error (multiple bits)
     """
 
@@ -384,7 +382,7 @@ def _correct_hamming_256(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
     # check for recoverable error in ECC
     if ((hweight8(d0) + hweight8(d1) + hweight8(d2)) == 1):
         # corrected single bit error in ECC
-        return (data, calculated_ecc, 2)
+        return (data, calculated_ecc, 1)
 
     # unrecoverable error
     return (data, data_ecc, -1)
@@ -417,8 +415,7 @@ def correct_hamming_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
         Tuple of (corrected_data, num_errors_corrected)
         num_errors_corrected:
             0 = no errors
-            1 = single-bit error data corrected
-            2 = single-bit error ecc corrected
+            1 = single-bit error corrected
             -1 = uncorrectable error (multiple bits)
     """
 

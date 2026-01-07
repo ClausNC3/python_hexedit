@@ -1020,6 +1020,38 @@ class Application():
                                         self.view.update_byte_display(buffer_offset, new_value)
                                     corrected_data_index += 1
 
+                        # Calculate new ECC for corrected data
+                        if config.ecc_type == ECCType.BCH:
+                            new_ecc = calculate_bch_ecc(corrected_data, config.ecc_size)
+                        else:  # ECCType.HAMMING
+                            new_ecc = calculate_hamming_ecc(corrected_data, config.ecc_size)
+
+                        # Write new ECC back to buffer
+                        new_ecc_index = 0
+                        for start, end in config.ecc_ranges:
+                            for offset in range(start, end + 1):
+                                if new_ecc_index < len(new_ecc):
+                                    buffer_offset = page_offset + offset
+                                    if buffer_offset >= len(self.file_buffer):
+                                        new_ecc_index += 1
+                                        continue
+
+                                    old_value = self.file_buffer[buffer_offset]
+                                    new_value = new_ecc[new_ecc_index]
+
+                                    if old_value is None or new_value is None:
+                                        new_ecc_index += 1
+                                        continue
+
+                                    if old_value != new_value:
+                                        # Add to undo stack
+                                        self.undo_stack.append(('modify', buffer_offset, old_value))
+                                        # Update buffer
+                                        self.file_buffer[buffer_offset] = new_value
+                                        # Update the view directly for this byte
+                                        self.view.update_byte_display(buffer_offset, new_value)
+                                    new_ecc_index += 1
+
             # Mark file as modified if any corrections were made
             if pages_corrected > 0:
                 self.is_modified = True
