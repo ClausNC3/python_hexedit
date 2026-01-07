@@ -42,7 +42,11 @@ from . import utils
 from .common import *
 from .utils import *
 from .nand import get_config_by_name, extract_data_from_page, extract_ecc_from_page
-from .ecc import ECCType, calculate_bch_ecc, verify_bch_ecc, correct_bch_errors
+from .ecc import (
+    ECCType,
+    calculate_bch_ecc, verify_bch_ecc, correct_bch_errors,
+    calculate_hamming_ecc, verify_hamming_ecc, correct_hamming_errors
+)
 
 class SearchContext:
     """Context for searching in binary data."""
@@ -928,9 +932,9 @@ class Application():
             self.view.display_error(f"Configuration '{self.selected_nand_config}' not found.")
             return
 
-        # Check if BCH ECC type
-        if config.ecc_type != ECCType.BCH:
-            self.view.display_error(f"ECC type {config.ecc_type.name} is not supported yet.\nOnly BCH is currently supported.")
+        # Check if supported ECC type
+        if config.ecc_type not in [ECCType.BCH, ECCType.HAMMING]:
+            self.view.display_error(f"ECC type {config.ecc_type.name} is not supported yet.\nOnly BCH and HAMMING are currently supported.")
             return
 
         try:
@@ -967,14 +971,20 @@ class Application():
                 # Extract existing ECC from page
                 existing_ecc = extract_ecc_from_page(page_data, config)
 
-                # Check if existing ECC matches calculated ECC
-                ecc_valid = verify_bch_ecc(data, existing_ecc)
+                # Check if existing ECC matches calculated ECC based on ECC type
+                if config.ecc_type == ECCType.BCH:
+                    ecc_valid = verify_bch_ecc(data, existing_ecc)
+                else:  # ECCType.HAMMING
+                    ecc_valid = verify_hamming_ecc(data, existing_ecc)
 
                 if ecc_valid:
                     pages_valid += 1
                 else:
-                    # Try to correct errors
-                    corrected_data, num_errors = correct_bch_errors(data, existing_ecc)
+                    # Try to correct errors based on ECC type
+                    if config.ecc_type == ECCType.BCH:
+                        corrected_data, num_errors = correct_bch_errors(data, existing_ecc)
+                    else:  # ECCType.HAMMING
+                        corrected_data, num_errors = correct_hamming_errors(data, existing_ecc)
 
                     if num_errors == -1:
                         # Too many errors to correct
@@ -1015,7 +1025,7 @@ class Application():
                 self.is_modified = True
 
             # Build summary report
-            result_msg = f"BCH ECC Analysis Report\n\n"
+            result_msg = f"{config.ecc_type.name} ECC Analysis Report\n\n"
             result_msg += f"Configuration: {config.name}\n"
             result_msg += f"Page size: {page_size} bytes\n"
             result_msg += f"Total pages checked: {total_pages}\n\n"

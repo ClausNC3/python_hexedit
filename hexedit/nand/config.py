@@ -18,7 +18,7 @@ class NANDFlashConfig:
     # Eksempel med BBM midt i data
 NAND_CONFIGS = [
     NANDFlashConfig(
-        name="Test",
+        name="Test_BCH",
         data_ranges=[(0x000, 0x12B), (0x12D, 0x200)],  # Data splittet pga BBM
         data_size=0x200,
         ecc_ranges=[(0x201, 0x20D)],
@@ -30,16 +30,28 @@ NAND_CONFIGS = [
         padding_size=2
     ),
     NANDFlashConfig(
-        name="Test2",
-        data_ranges=[(0x000, 0x7FF)],
-        data_size=0x800,
-        ecc_ranges=[(0x800, 0x83F)],
-        ecc_size=64,
-        ecc_type=ECCType.BCH,
-        bbm_ranges=[(0x840, 0x840)],
-        bbm_size=1,
-        padding_ranges=[],
-        padding_size=0
+        name="Test_Hamming512",
+        data_ranges=[(0x000, 0x1FF)],
+        data_size=0x200,
+        ecc_ranges=[(0x20D, 0x20F)],
+        ecc_size=3,
+        ecc_type=ECCType.HAMMING,
+        bbm_ranges=[],
+        bbm_size=0,
+        padding_ranges=[(0x200, 0x20C)],
+        padding_size=13
+    ),
+    NANDFlashConfig(
+        name="Test_Hamming256",
+        data_ranges=[(0x000, 0x1FF)],
+        data_size=0x200,
+        ecc_ranges=[(0x20A, 0x20F)],
+        ecc_size=6,
+        ecc_type=ECCType.HAMMING,
+        bbm_ranges=[],
+        bbm_size=0,
+        padding_ranges=[(0x200, 0x209)],
+        padding_size=10
     ),
 ]
 

@@ -106,10 +106,10 @@ def correct_bch_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
     ecc_size = len(ecc)
 
     # Determine t and m values based on ECC size and data size
-    if ecc_size == 13 and len(data) == 512:
+    '''if ecc_size == 13 and len(data) == 512:
         t = 8
-        m = 13
-    elif ecc_size <= 7:
+        m = 13'''
+    if ecc_size <= 7:
         t = 4
         m = 13
     elif ecc_size <= 13:
@@ -129,11 +129,9 @@ def correct_bch_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
 
     # First use decode to check if there are errors
     # Then use correct to fix them if needed
-    data_part = bytearray(data)
-    ecc_part = bytearray(ecc)
 
     # Check if there are errors
-    num_errors = bch.decode(data_part, ecc_part)
+    num_errors = bch.decode(data, ecc)
 
     if num_errors < 0:
         # Too many errors to correct
@@ -144,5 +142,6 @@ def correct_bch_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
         data_part = bytearray(data)
         ecc_part = bytearray(ecc)
         bch.correct(data_part, ecc_part)
+        return bytes(data_part), num_errors
 
-    return bytes(data_part), num_errors
+    return data, num_errors

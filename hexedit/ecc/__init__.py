@@ -23,5 +23,10 @@ License:
 """
 from .type import ECCType
 from .bch import calculate_bch_ecc, verify_bch_ecc, correct_bch_errors
+from .hamming import calculate_hamming_ecc, verify_hamming_ecc, correct_hamming_errors
 
-__all__ = ['ECCType', 'calculate_bch_ecc', 'verify_bch_ecc', 'correct_bch_errors']
+__all__ = [
+    'ECCType',
+    'calculate_bch_ecc', 'verify_bch_ecc', 'correct_bch_errors',
+    'calculate_hamming_ecc', 'verify_hamming_ecc', 'correct_hamming_errors'
+]
