@@ -933,8 +933,8 @@ class Application():
             return
 
         # Check if supported ECC type
-        if config.ecc_type not in [ECCType.BCH, ECCType.HAMMING]:
-            self.view.display_error(f"ECC type {config.ecc_type.name} is not supported yet.\nOnly BCH and HAMMING are currently supported.")
+        if config.ecc_type not in [ECCType.BCH, ECCType.HAMMING256, ECCType.HAMMING512]:
+            self.view.display_error(f"ECC type {config.ecc_type.name} is not supported yet.\nOnly BCH, HAMMING256 and HAMMING512 are currently supported.")
             return
 
         try:
@@ -974,8 +974,8 @@ class Application():
                 # Check if existing ECC matches calculated ECC based on ECC type
                 if config.ecc_type == ECCType.BCH:
                     ecc_valid = verify_bch_ecc(data, existing_ecc)
-                else:  # ECCType.HAMMING
-                    ecc_valid = verify_hamming_ecc(data, existing_ecc)
+                else:  # ECCType.HAMMING256 or ECCType.HAMMING512
+                    ecc_valid = verify_hamming_ecc(data, existing_ecc, config.ecc_type)
 
                 if ecc_valid:
                     pages_valid += 1
@@ -983,8 +983,8 @@ class Application():
                     # Try to correct errors based on ECC type
                     if config.ecc_type == ECCType.BCH:
                         corrected_data, num_errors = correct_bch_errors(data, existing_ecc)
-                    else:  # ECCType.HAMMING
-                        corrected_data, num_errors = correct_hamming_errors(data, existing_ecc)
+                    else:  # ECCType.HAMMING256 or ECCType.HAMMING512
+                        corrected_data, num_errors = correct_hamming_errors(data, existing_ecc, config.ecc_type)
 
                     if num_errors == -1:
                         # Too many errors to correct
@@ -1023,8 +1023,8 @@ class Application():
                         # Calculate new ECC for corrected data
                         if config.ecc_type == ECCType.BCH:
                             new_ecc = calculate_bch_ecc(corrected_data, config.ecc_size)
-                        else:  # ECCType.HAMMING
-                            new_ecc = calculate_hamming_ecc(corrected_data, config.ecc_size)
+                        else:  # ECCType.HAMMING256 or ECCType.HAMMING512
+                            new_ecc = calculate_hamming_ecc(corrected_data, config.ecc_size, config.ecc_type)
 
                         # Write new ECC back to buffer
                         new_ecc_index = 0

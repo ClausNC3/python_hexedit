@@ -24,12 +24,13 @@ License:
 import enum
 
 class ECCType(enum.Enum):
-    
+
     # None
     NONE               = enum.auto()
-    
+
     # Hamming codes are a family of linear error-correcting codes
-    HAMMING            = enum.auto()
-    
+    HAMMING256         = enum.auto()  # Hamming for 256-byte blocks
+    HAMMING512         = enum.auto()  # Hamming for 512-byte blocks
+
     # Bose–Chaudhuri–Hocquenghem codes (BCH codes) form a class of cyclic error-correcting codes that are constructed using polynomials over a finite field (also called a Galois field)
     BCH                = enum.auto()

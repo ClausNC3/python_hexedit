@@ -44,12 +44,12 @@ NAND_CONFIGS = [
         data_size=512,
         ecc_ranges=[(0x20D, 0x20F)],
         ecc_size=3,
-        ecc_type=ECCType.HAMMING,
+        ecc_type=ECCType.HAMMING512,
         bbm_ranges=[],
         bbm_size=0,
         padding_ranges=[(0x200, 0x20C)],
         padding_size=13,
-        
+
         page_ranges=[(0x000, 0x20F)],
         page_size=512 + 16,
         page_padding_ranges=[],
@@ -61,12 +61,12 @@ NAND_CONFIGS = [
         data_size=512,
         ecc_ranges=[(0x20A, 0x20C), (0x20D, 0x20F)],
         ecc_size=6,
-        ecc_type=ECCType.HAMMING,
+        ecc_type=ECCType.HAMMING256,
         bbm_ranges=[],
         bbm_size=0,
         padding_ranges=[(0x200, 0x209)],
         padding_size=10,
-        
+
         page_ranges=[(0x000, 0x20F)],
         page_size=512+16,
         page_padding_ranges=[],

@@ -24,6 +24,7 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 """
+from .type import ECCType
 
 # Column parity lookup table for Hamming ECC
 COLUMN_PARITY_TABLE = [
@@ -69,7 +70,7 @@ COUNT_BITS_TABLE = [
 def hweight8(byte):
     return COUNT_BITS_TABLE[byte]
 
-def calculate_hamming_ecc(data: bytes, ecc_size: int) -> bytes:
+def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
     """Calculate Hamming ECC for data.
 
     This implementation uses standard Hamming codes for NAND flash,
@@ -78,6 +79,7 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int) -> bytes:
     Args:
         data: Input data bytes
         ecc_size: Expected ECC size in bytes (typically 3 or 6 bytes)
+        ecc_type: ECCType (HAMMING256 or HAMMING512)
 
     Returns:
         Hamming ECC bytes
@@ -86,12 +88,14 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int) -> bytes:
     if len(data) == 0:
         return b'\x00' * ecc_size
 
-    ecc_result = bytearray(ecc_size)
+    ecc_result = bytearray()
 
-    if ecc_size == 3 and len(data) == 512:
-        ecc_result = _calculate_hamming_512(data)
-    elif ecc_size == 6 and len(data) == 512:
-        ecc_result = _calculate_hamming_256(data) + _calculate_hamming_256(data[256:])
+    if ecc_type == ECCType.HAMMING512:
+        for i in range(0, len(data), 512):
+            ecc_result += _calculate_hamming_512(data)
+    elif ecc_type == ECCType.HAMMING256:
+        for i in range(0, len(data), 256):
+            ecc_result += _calculate_hamming_256(data[i:i+256])
 
     return bytes(ecc_result)
 
@@ -387,22 +391,23 @@ def _correct_hamming_256(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
     # unrecoverable error
     return (data, data_ecc, -1)
 
-def verify_hamming_ecc(data: bytes, ecc: bytes) -> bool:
+def verify_hamming_ecc(data: bytes, ecc: bytes, ecc_type) -> bool:
     """Verify Hamming ECC for data.
 
     Args:
         data: Input data bytes
         ecc: ECC bytes to verify
+        ecc_type: ECCType (HAMMING256 or HAMMING512)
 
     Returns:
         True if ECC is valid, False otherwise
     """
 
-    calculated_ecc = calculate_hamming_ecc(data, len(ecc))
+    calculated_ecc = calculate_hamming_ecc(data, len(ecc), ecc_type)
     return calculated_ecc == ecc
 
 
-def correct_hamming_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
+def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, int]:
     """Correct errors in data using Hamming ECC.
 
     Hamming codes can correct single-bit errors and detect double-bit errors.
@@ -410,6 +415,7 @@ def correct_hamming_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
     Args:
         data: Input data bytes (possibly corrupted)
         ecc: ECC bytes
+        ecc_type: ECCType (HAMMING256 or HAMMING512)
 
     Returns:
         Tuple of (corrected_data, num_errors_corrected)
@@ -418,21 +424,25 @@ def correct_hamming_errors(data: bytes, ecc: bytes) -> tuple[bytes, int]:
             1 = single-bit error corrected
             -1 = uncorrectable error (multiple bits)
     """
-
+    
     if len(data) == 0:
         return data, 0
 
-    corrected_data = bytearray(data)
-    corrected_ecc = bytearray(ecc)
+    corrected_data = bytearray()
+    corrected_ecc = bytearray()
     total_corrections = 0
 
-    if len(ecc) == 3 and len(data) == 512:
-        corrected_data, corrected_ecc, total_corrections = _correct_hamming_512(data, ecc, _calculate_hamming_512(data))
-    elif len(ecc) == 6 and len(data) == 512:
-        corrected_data, corrected_ecc, total_corrections = _correct_hamming_256(data[0:256], ecc[0:3], _calculate_hamming_256(data))
-        temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[256:], ecc[3:], _calculate_hamming_256(data[256:]))
-        corrected_data += temp_data
-        corrected_ecc += temp_ecc
-        total_corrections += temp_corrections
+    if ecc_type == ECCType.HAMMING512:
+        for i in range(0, len(data), 512):
+            temp_data, temp_ecc, temp_corrections = _correct_hamming_512(data[i:i+512], ecc[int(i/512)*3:(int(i/512)*3)+3], _calculate_hamming_512(data[i:i+512]))
+            corrected_data += temp_data
+            corrected_ecc += temp_ecc
+            total_corrections += temp_corrections
+    elif ecc_type == ECCType.HAMMING256:
+        for i in range(0, len(data), 256):
+            temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[i:i+256], ecc[int(i/256)*3:(int(i/256)*3)+3], _calculate_hamming_256(data[i:i+256]))
+            corrected_data += temp_data
+            corrected_ecc += temp_ecc
+            total_corrections += temp_corrections
 
     return bytes(corrected_data), total_corrections
