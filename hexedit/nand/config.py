@@ -56,6 +56,23 @@ NAND_CONFIGS = [
         page_padding_size=0
     ),
     NANDFlashConfig(
+        name="Test_Hamming512_2",   # TC58NVG0S3ETA00 (hikvision)
+        data_ranges=[(0x000, 0x1FF),(0x200, 0x3FF),(0x400, 0x5FF),(0x600, 0x7FF)],
+        data_size=2048,
+        ecc_ranges=[(0x808, 0x80A),(0x818, 0x81A),(0x828, 0x82A),(0x838, 0x83A)],
+        ecc_size=12,
+        ecc_type=ECCType.HAMMING512,
+        bbm_ranges=[],
+        bbm_size=0,
+        padding_ranges=[(0x800, 0x807),(0x80B, 0x80F),(0x810, 0x817),(0x81B, 0x81F),(0x820, 0x827),(0x82B, 0x82F),(0x830, 0x837),(0x83B, 0x83F)],
+        padding_size=52,
+
+        page_ranges=[(0x000, 0x83F)],
+        page_size=2048 + 64,
+        page_padding_ranges=[],
+        page_padding_size=0
+    ),
+    NANDFlashConfig(
         name="Test_Hamming256",     # NAND128W3A2BN6 (Audi Telemodul)
         data_ranges=[(0x000, 0x0FF), (0x100, 0x1FF)],
         data_size=512,

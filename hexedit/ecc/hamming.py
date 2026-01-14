@@ -92,7 +92,7 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
 
     if ecc_type == ECCType.HAMMING512:
         for i in range(0, len(data), 512):
-            ecc_result += _calculate_hamming_512(data)
+            ecc_result += _calculate_hamming_512(data[i:i+512])
     elif ecc_type == ECCType.HAMMING256:
         for i in range(0, len(data), 256):
             ecc_result += _calculate_hamming_256(data[i:i+256])
@@ -404,6 +404,8 @@ def verify_hamming_ecc(data: bytes, ecc: bytes, ecc_type) -> bool:
     """
 
     calculated_ecc = calculate_hamming_ecc(data, len(ecc), ecc_type)
+    print(calculated_ecc.hex())
+    print(ecc.hex())    
     return calculated_ecc == ecc
 
 
