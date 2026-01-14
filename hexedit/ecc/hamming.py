@@ -79,7 +79,7 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
     Args:
         data: Input data bytes
         ecc_size: Expected ECC size in bytes (typically 3 or 6 bytes)
-        ecc_type: ECCType (HAMMING256 or HAMMING512)
+        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING256_INVERTED or HAMMING512_INVERTED)
 
     Returns:
         Hamming ECC bytes
@@ -90,12 +90,16 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
 
     ecc_result = bytearray()
 
-    if ecc_type == ECCType.HAMMING512:
+    if ecc_type in (ECCType.HAMMING512, ECCType.HAMMING512_INVERTED):
         for i in range(0, len(data), 512):
             ecc_result += _calculate_hamming_512(data[i:i+512])
-    elif ecc_type == ECCType.HAMMING256:
+    elif ecc_type in (ECCType.HAMMING256, ECCType.HAMMING256_INVERTED):
         for i in range(0, len(data), 256):
             ecc_result += _calculate_hamming_256(data[i:i+256])
+
+    # Invert ECC if inverted type
+    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED):
+        ecc_result = bytearray(~b & 0xff for b in ecc_result)
 
     return bytes(ecc_result)
 
@@ -397,15 +401,13 @@ def verify_hamming_ecc(data: bytes, ecc: bytes, ecc_type) -> bool:
     Args:
         data: Input data bytes
         ecc: ECC bytes to verify
-        ecc_type: ECCType (HAMMING256 or HAMMING512)
+        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING256_INVERTED or HAMMING512_INVERTED)
 
     Returns:
         True if ECC is valid, False otherwise
     """
 
     calculated_ecc = calculate_hamming_ecc(data, len(ecc), ecc_type)
-    print(calculated_ecc.hex())
-    print(ecc.hex())    
     return calculated_ecc == ecc
 
 
@@ -417,7 +419,7 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
     Args:
         data: Input data bytes (possibly corrupted)
         ecc: ECC bytes
-        ecc_type: ECCType (HAMMING256 or HAMMING512)
+        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING256_INVERTED or HAMMING512_INVERTED)
 
     Returns:
         Tuple of (corrected_data, num_errors_corrected)
@@ -426,23 +428,28 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
             1 = single-bit error corrected
             -1 = uncorrectable error (multiple bits)
     """
-    
+
     if len(data) == 0:
         return data, 0
+
+    # If inverted type, uninvert the ECC for processing
+    working_ecc = ecc
+    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED):
+        working_ecc = bytes(~b & 0xff for b in ecc)
 
     corrected_data = bytearray()
     corrected_ecc = bytearray()
     total_corrections = 0
 
-    if ecc_type == ECCType.HAMMING512:
+    if ecc_type in (ECCType.HAMMING512, ECCType.HAMMING512_INVERTED):
         for i in range(0, len(data), 512):
-            temp_data, temp_ecc, temp_corrections = _correct_hamming_512(data[i:i+512], ecc[int(i/512)*3:(int(i/512)*3)+3], _calculate_hamming_512(data[i:i+512]))
+            temp_data, temp_ecc, temp_corrections = _correct_hamming_512(data[i:i+512], working_ecc[int(i/512)*3:(int(i/512)*3)+3], _calculate_hamming_512(data[i:i+512]))
             corrected_data += temp_data
             corrected_ecc += temp_ecc
             total_corrections += temp_corrections
-    elif ecc_type == ECCType.HAMMING256:
+    elif ecc_type in (ECCType.HAMMING256, ECCType.HAMMING256_INVERTED):
         for i in range(0, len(data), 256):
-            temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[i:i+256], ecc[int(i/256)*3:(int(i/256)*3)+3], _calculate_hamming_256(data[i:i+256]))
+            temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[i:i+256], working_ecc[int(i/256)*3:(int(i/256)*3)+3], _calculate_hamming_256(data[i:i+256]))
             corrected_data += temp_data
             corrected_ecc += temp_ecc
             total_corrections += temp_corrections
