@@ -69,6 +69,12 @@ class HexAreaView():
     REPR_CHARS_PER_BYTE_HEX = 3 # Two chars for hex representation + one space
     REPR_CHARS_PER_BYTE_ASCII = 1
 
+    # Pre-create ASCII translation table for performance (class variable)
+    _ASCII_TRANS_TABLE = bytes(
+        ord('.') if (i < 32 or i > 127) else i
+        for i in range(256)
+    )
+
     def __init__(self, root, parent, callbacks: Dict[Events, Callable[..., None]]):
         """Instantiate the class.
         
@@ -1053,7 +1059,7 @@ class HexAreaView():
     def _create_hex_view_content(self, byte_arr: bytes, queue: queue.Queue) -> None:
         """Create the content to be insterted into the hex view and pass it to the given queue.
 
-        This function runs is a separate thread, and feeds the queue with chunks of content to be 
+        This function runs is a separate thread, and feeds the queue with chunks of content to be
         appended to the hex view.
 
         Args:
@@ -1062,44 +1068,49 @@ class HexAreaView():
 
             queue:
                 The output queue to which the chunks of formatted text need to be sent to.
-        
+
         """
         try:
             chars_per_byte = 2
             format_pad_len = 8 * chars_per_byte
 
-            # Increased chunk size for faster loading (64KB instead of 4KB)
-            chunk_size = 0x10000
+            # Increased chunk size for faster loading (256KB for better throughput)
+            chunk_size = 0x40000
 
-            # Pre-create ASCII translation table for better performance
-            ascii_chars = bytearray(range(256))
-            for i in range(256):
-                if i < 32 or i > 127:
-                    ascii_chars[i] = ord('.')
+            # Use class-level pre-created ASCII translation table
+            ascii_chars = self._ASCII_TRANS_TABLE
+
+            # Pre-allocate hex conversion lookup for faster conversion
+            hex_lookup = [f"{i:02X}" for i in range(256)]
 
             for i, chunk_external in enumerate(chunker(byte_arr, chunk_size)):
                 if self.abort_load:
                     break
 
-                # String concatenation is faster with StringIO
-                textbox_hex_content = StringIO()
-                textbox_ascii_content = StringIO()
-                textbox_address_content = StringIO()
+                # Use list append and join for better performance than StringIO
+                hex_lines = []
+                ascii_lines = []
+                address_lines = []
                 base_addr = chunk_size * i
 
                 for j, chunk_16b in enumerate(chunker(chunk_external, self.BYTES_PER_ROW)):
-
                     if self.abort_load:
                         break
 
-                    hex_format = chunk_16b.hex(" ").upper()
-                    textbox_hex_content.write(hex_format + "\n")
+                    # Manual hex conversion is faster than .hex().upper()
+                    hex_parts = [hex_lookup[b] for b in chunk_16b]
+                    hex_lines.append(" ".join(hex_parts))
 
                     # Use translate for faster ASCII conversion
-                    ascii_format = chunk_16b.translate(ascii_chars).decode('ascii')
-                    textbox_ascii_content.write(ascii_format + "\n")
+                    ascii_lines.append(chunk_16b.translate(ascii_chars).decode('ascii'))
 
-                    textbox_address_content.write(format(base_addr + (j * self.BYTES_PER_ROW), 'X').rjust(format_pad_len, '0') + "\n")
+                    # Pre-format address
+                    address_lines.append(f"{base_addr + (j * self.BYTES_PER_ROW):08X}")
+
+                # Join all lines with newlines and create StringIO for compatibility
+                textbox_hex_content = StringIO("\n".join(hex_lines) + "\n")
+                textbox_ascii_content = StringIO("\n".join(ascii_lines) + "\n")
+                textbox_address_content = StringIO("\n".join(address_lines) + "\n")
 
                 queue.put((textbox_address_content, textbox_hex_content, textbox_ascii_content))
 

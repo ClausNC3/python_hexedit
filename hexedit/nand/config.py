@@ -39,7 +39,7 @@ NAND_CONFIGS = [
         page_padding_size=0
     ),
     NANDFlashConfig(
-        name="Test_Hamming512",
+        name="Test_Hamming512", # W29N01HZBINA (Verisure)
         data_ranges=[(0x000, 0x1FF)],
         data_size=512,
         ecc_ranges=[(0x20D, 0x20F)],

@@ -39,13 +39,18 @@ def memory_map(filename: str, access=mmap.ACCESS_READ) -> mmap.mmap:
             Path to file to be mapped.
         access:
             Access type.
-    
+
     Returns:
         Memory mapped object.
     """
     size = os.path.getsize(filename)
     fd = os.open(filename, os.O_RDONLY if access == mmap.ACCESS_READ else os.O_RDWR)
-    return mmap.mmap(fd, size, access=access)
+    try:
+        return mmap.mmap(fd, size, access=access)
+    finally:
+        # Close the file descriptor after creating the mmap
+        # The mmap retains its own reference to the file
+        os.close(fd)
 
 def chunker(seq: Iterable, size: int) -> Generator[List, None, None]:
     """Divide iterable into chunks of given size.
