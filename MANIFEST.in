@@ -1,0 +1,5 @@
+include README.md
+recursive-include hexedit *.py
+recursive-include hexedit/view/assets *.gif *.ico
+global-exclude __pycache__
+global-exclude *.py[co]

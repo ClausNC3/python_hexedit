@@ -1,6 +1,24 @@
 # hexedit
 
-`hexedit` is a Hex editor. 
+`hexedit` is a Hex editor.
+
+## Installation
+
+### From source
+
+```console
+$ git clone https://github.com/ClausNC3/python_hexedit.git
+$ cd python_hexedit
+$ pip install .
+```
+
+### Development installation
+
+For development, install in editable mode:
+
+```console
+$ pip install -e .
+```
 
 ## Usage
 
