@@ -73,6 +73,23 @@ NAND_CONFIGS = [
         page_padding_size=0
     ),
     NANDFlashConfig(
+        name="Test_Hamming512_3",   # TC58NVG0S3EBA14 (Parrot)
+        data_ranges=[(0x000, 0x1FF),(0x200, 0x3FF),(0x400, 0x5FF),(0x600, 0x7FF)],
+        data_size=2048,
+        ecc_ranges=[(0x802, 0x804),(0x812, 0x814),(0x822, 0x824),(0x832, 0x834)],
+        ecc_size=12,
+        ecc_type=ECCType.HAMMING512_NAND,
+        bbm_ranges=[],
+        bbm_size=0,
+        padding_ranges=[(0x800, 0x801),(0x805, 0x80F),(0x810, 0x811),(0x815, 0x81F),(0x820, 0x821),(0x825, 0x82F),(0x830, 0x831),(0x835, 0x83F)],
+        padding_size=52,
+
+        page_ranges=[(0x000, 0x83F)],
+        page_size=2048 + 64,
+        page_padding_ranges=[],
+        page_padding_size=0
+    ),
+    NANDFlashConfig(
         name="Test_Hamming256",     # NAND128W3A2BN6 (Audi Telemodul)
         data_ranges=[(0x000, 0x0FF), (0x100, 0x1FF)],
         data_size=512,
