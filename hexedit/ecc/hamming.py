@@ -79,7 +79,7 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
     Args:
         data: Input data bytes
         ecc_size: Expected ECC size in bytes (typically 3 or 6 bytes)
-        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING256_INVERTED or HAMMING512_INVERTED)
+        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING512_NAND, and their _INVERTED variants)
 
     Returns:
         Hamming ECC bytes
@@ -93,21 +93,27 @@ def calculate_hamming_ecc(data: bytes, ecc_size: int, ecc_type) -> bytes:
     if ecc_type in (ECCType.HAMMING512, ECCType.HAMMING512_INVERTED):
         for i in range(0, len(data), 512):
             ecc_result += _calculate_hamming_512(data[i:i+512])
+    elif ecc_type in (ECCType.HAMMING512_NAND, ECCType.HAMMING512_NAND_INVERTED):
+        for i in range(0, len(data), 512):
+            ecc_result += _calculate_hamming_512_nand(data[i:i+512])
     elif ecc_type in (ECCType.HAMMING256, ECCType.HAMMING256_INVERTED):
         for i in range(0, len(data), 256):
             ecc_result += _calculate_hamming_256(data[i:i+256])
 
     # Invert ECC if inverted type
-    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED):
+    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED, ECCType.HAMMING512_NAND_INVERTED):
         ecc_result = bytearray(~b & 0xff for b in ecc_result)
 
     return bytes(ecc_result)
 
-# Calculate the ECC for a 512-byte block of data
+# Calculate the ECC for a 512-byte block of data (standard bit packing)
 def _calculate_hamming_512(data: bytes) -> bytes:
     """Calculate 3-byte Hamming ECC for 512 bytes of data.
 
-    Uses column and line parity calculation common in NAND flash.
+    Uses standard bit packing layout:
+        ecc[0]: LP3, LP'3, LP2, LP'2, LP1, LP'1, LP0, LP'0
+        ecc[1]: LP7, LP'7, LP6, LP'6, LP5, LP'5, LP4, LP'4
+        ecc[2]: CP5, CP4, CP3, CP2, CP1, CP0, LP8, LP'8
 
     Args:
         data: 512 bytes of input data
@@ -128,6 +134,7 @@ def _calculate_hamming_512(data: bytes) -> bytes:
             line_parity ^= i
             line_parity_prime ^= ~i
 
+    # ecc[0]: LP3, LP'3, LP2, LP'2, LP1, LP'1, LP0, LP'0
     t = 0
     if (line_parity & 0x08):
         t |= 0x80
@@ -147,6 +154,7 @@ def _calculate_hamming_512(data: bytes) -> bytes:
         t |= 0x01
     ecc[0] = t
 
+    # ecc[1]: LP7, LP'7, LP6, LP'6, LP5, LP'5, LP4, LP'4
     t = 0
     if (line_parity & 0x80):
         t |= 0x80
@@ -166,6 +174,7 @@ def _calculate_hamming_512(data: bytes) -> bytes:
         t |= 0x01
     ecc[1] = t
 
+    # ecc[2]: CP5, CP4, CP3, CP2, CP1, CP0, LP8, LP'8
     col_parity &= 0xfc
     if (line_parity & 0x100):
         col_parity |= 0x02
@@ -173,6 +182,85 @@ def _calculate_hamming_512(data: bytes) -> bytes:
         col_parity |= 0x01
 
     ecc[2] = col_parity
+
+    return bytes(ecc)
+
+# Calculate the ECC for a 512-byte block of data (NAND flash bit packing)
+def _calculate_hamming_512_nand(data: bytes) -> bytes:
+    """Calculate 3-byte Hamming ECC for 512 bytes of data.
+
+    Uses NAND flash bit packing layout:
+        ecc[0]: LP0, LP'0, CP5, CP4, CP3, CP2, CP1, CP0
+        ecc[1]: LP4, LP'4, LP3, LP'3, LP2, LP'2, LP1, LP'1
+        ecc[2]: LP8, LP'8, LP7, LP'7, LP6, LP'6, LP5, LP'5
+
+    Args:
+        data: 512 bytes of input data
+
+    Returns:
+        3 bytes of ECC data
+    """
+    ecc = bytearray(3)
+    col_parity = 0
+    line_parity = 0
+    line_parity_prime = 0
+
+    for i in range(512):
+        b = COLUMN_PARITY_TABLE[data[i]]
+        col_parity ^= b
+
+        if (b & 0x01):
+            line_parity ^= i
+            line_parity_prime ^= ~i
+
+    # ecc[0]: LP0, LP'0, CP5, CP4, CP3, CP2, CP1, CP0
+    t = 0
+    if (line_parity & 0x01):
+        t |= 0x80
+    if (line_parity_prime & 0x01):
+        t |= 0x40
+    t |= (col_parity >> 2) & 0x3f
+    ecc[0] = t
+
+    # ecc[1]: LP4, LP'4, LP3, LP'3, LP2, LP'2, LP1, LP'1
+    t = 0
+    if (line_parity & 0x10):
+        t |= 0x80
+    if (line_parity_prime & 0x10):
+        t |= 0x40
+    if (line_parity & 0x08):
+        t |= 0x20
+    if (line_parity_prime & 0x08):
+        t |= 0x10
+    if (line_parity & 0x04):
+        t |= 0x08
+    if (line_parity_prime & 0x04):
+        t |= 0x04
+    if (line_parity & 0x02):
+        t |= 0x02
+    if (line_parity_prime & 0x02):
+        t |= 0x01
+    ecc[1] = t
+
+    # ecc[2]: LP8, LP'8, LP7, LP'7, LP6, LP'6, LP5, LP'5
+    t = 0
+    if (line_parity & 0x100):
+        t |= 0x80
+    if (line_parity_prime & 0x100):
+        t |= 0x40
+    if (line_parity & 0x80):
+        t |= 0x20
+    if (line_parity_prime & 0x80):
+        t |= 0x10
+    if (line_parity & 0x40):
+        t |= 0x08
+    if (line_parity_prime & 0x40):
+        t |= 0x04
+    if (line_parity & 0x20):
+        t |= 0x02
+    if (line_parity_prime & 0x20):
+        t |= 0x01
+    ecc[2] = t
 
     return bytes(ecc)
 
@@ -243,11 +331,9 @@ def _calculate_hamming_256(data: bytes) -> bytes:
 
     return bytes(ecc)
 
-# Correct the ECC on a 512-byte block of data
+# Correct the ECC on a 512-byte block of data (standard bit packing)
 def _correct_hamming_512(data: bytes, data_ecc: bytes, calculated_ecc: bytes) -> tuple[bytes, bytes, int]:
-    """Correct Hamming ECC for 512 bytes of data.
-
-    Uses column and line parity calculation common in NAND flash.
+    """Correct Hamming ECC for 512 bytes of data (standard bit packing).
 
     Args:
         data: Input data bytes (possibly corrupted)
@@ -281,31 +367,109 @@ def _correct_hamming_512(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
         bit = 0
         byte = 0
 
+        # Standard layout: d0=LP3..LP0, d1=LP7..LP4, d2=CP5..CP0+LP8
         if (d1 & 0x80):
-            byte |= 0x80
+            byte |= 0x80   # LP7
         if (d1 & 0x20):
-            byte |= 0x40
+            byte |= 0x40   # LP6
         if (d1 & 0x08):
-            byte |= 0x20
+            byte |= 0x20   # LP5
         if (d1 & 0x02):
-            byte |= 0x10
+            byte |= 0x10   # LP4
         if (d0 & 0x80):
-            byte |= 0x08
+            byte |= 0x08   # LP3
         if (d0 & 0x20):
-            byte |= 0x04
+            byte |= 0x04   # LP2
         if (d0 & 0x08):
-            byte |= 0x02
+            byte |= 0x02   # LP1
         if (d0 & 0x02):
-            byte |= 0x01
+            byte |= 0x01   # LP0
         if (d2 & 0x02):
-            byte |= 0x100
+            byte |= 0x100  # LP8
 
         if (d2 & 0x80):
-            bit |= 0x04
+            bit |= 0x04    # CP5
         if (d2 & 0x20):
-            bit |= 0x02
+            bit |= 0x02    # CP3
         if (d2 & 0x08):
-            bit |= 0x01
+            bit |= 0x01    # CP1
+
+        corrected[byte] ^= (1 << bit) & 0xff
+
+        # corrected single bit error in data
+        return (bytes(corrected), data_ecc, 1)
+
+    # check for recoverable error in ECC
+    if ((hweight8(d0) + hweight8(d1) + hweight8(d2)) == 1):
+        # corrected single bit error in ECC
+        return (data, calculated_ecc, 1)
+
+    # unrecoverable error
+    return (data, data_ecc, -1)
+
+# Correct the ECC on a 512-byte block of data (NAND flash bit packing)
+def _correct_hamming_512_nand(data: bytes, data_ecc: bytes, calculated_ecc: bytes) -> tuple[bytes, bytes, int]:
+    """Correct Hamming ECC for 512 bytes of data (NAND flash bit packing).
+
+    Args:
+        data: Input data bytes (possibly corrupted)
+        data_ecc: ECC bytes (possibly corrupted)
+        calculated_ecc: ECC bytes (calculated from input data)
+
+    Returns:
+        Tuple of (corrected_data, corrected_ecc, num_errors_corrected)
+        num_errors_corrected:
+            0 = no errors
+            1 = single-bit error corrected
+            -1 = uncorrectable error (multiple bits)
+    """
+
+    corrected = [0] * len(data)
+    corrected[:] = data
+
+    d0 = data_ecc[0] ^ calculated_ecc[0]
+    d1 = data_ecc[1] ^ calculated_ecc[1]
+    d2 = data_ecc[2] ^ calculated_ecc[2]
+
+    if (d0 | d1 | d2) == 0:
+        # there is no error
+        return (data, data_ecc, 0)
+
+    # check for single bit error
+    if (((d0 ^ (d0 >> 1)) & 0x55) == 0x55 and
+        ((d1 ^ (d1 >> 1)) & 0x55) == 0x55 and
+        ((d2 ^ (d2 >> 1)) & 0x55) == 0x55):
+
+        bit = 0
+        byte = 0
+
+        # NAND layout: d0=LP0+CP, d1=LP4..LP1, d2=LP8..LP5
+        if (d2 & 0x80):
+            byte |= 0x100  # LP8
+        if (d2 & 0x20):
+            byte |= 0x80   # LP7
+        if (d2 & 0x08):
+            byte |= 0x40   # LP6
+        if (d2 & 0x02):
+            byte |= 0x20   # LP5
+        if (d1 & 0x80):
+            byte |= 0x10   # LP4
+        if (d1 & 0x20):
+            byte |= 0x08   # LP3
+        if (d1 & 0x08):
+            byte |= 0x04   # LP2
+        if (d1 & 0x02):
+            byte |= 0x02   # LP1
+        if (d0 & 0x80):
+            byte |= 0x01   # LP0
+
+        # Extract bit position from CP bits
+        if (d0 & 0x20):
+            bit |= 0x04    # CP5
+        if (d0 & 0x08):
+            bit |= 0x02    # CP3
+        if (d0 & 0x02):
+            bit |= 0x01    # CP1
 
         corrected[byte] ^= (1 << bit) & 0xff
 
@@ -419,7 +583,7 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
     Args:
         data: Input data bytes (possibly corrupted)
         ecc: ECC bytes
-        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING256_INVERTED or HAMMING512_INVERTED)
+        ecc_type: ECCType (HAMMING256, HAMMING512, HAMMING512_NAND, and their _INVERTED variants)
 
     Returns:
         Tuple of (corrected_data, num_errors_corrected)
@@ -434,7 +598,7 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
 
     # If inverted type, uninvert the ECC for processing
     working_ecc = ecc
-    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED):
+    if ecc_type in (ECCType.HAMMING256_INVERTED, ECCType.HAMMING512_INVERTED, ECCType.HAMMING512_NAND_INVERTED):
         working_ecc = bytes(~b & 0xff for b in ecc)
 
     corrected_data = bytearray()
@@ -447,6 +611,13 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
             corrected_data += temp_data
             corrected_ecc += temp_ecc
             total_corrections += temp_corrections
+    elif ecc_type in (ECCType.HAMMING512_NAND, ECCType.HAMMING512_NAND_INVERTED):
+        for i in range(0, len(data), 512):
+            temp_data, temp_ecc, temp_corrections = _correct_hamming_512_nand(data[i:i+512], working_ecc[int(i/512)*3:(int(i/512)*3)+3], _calculate_hamming_512_nand(data[i:i+512]))
+            corrected_data += temp_data
+            corrected_ecc += temp_ecc
+            if(total_corrections != -1):
+                total_corrections += temp_corrections
     elif ecc_type in (ECCType.HAMMING256, ECCType.HAMMING256_INVERTED):
         for i in range(0, len(data), 256):
             temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[i:i+256], working_ecc[int(i/256)*3:(int(i/256)*3)+3], _calculate_hamming_256(data[i:i+256]))
