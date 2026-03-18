@@ -484,11 +484,9 @@ def _correct_hamming_512_nand(data: bytes, data_ecc: bytes, calculated_ecc: byte
     # unrecoverable error
     return (data, data_ecc, -1)
 
-# Correct the ECC on a 256-byte block of data
+# Correct the ECC on a 256-byte block of data (standard bit packing)
 def _correct_hamming_256(data: bytes, data_ecc: bytes, calculated_ecc: bytes) -> tuple[bytes, bytes, int]:
-    """Correct Hamming ECC for 256 bytes of data.
-
-    Uses column and line parity calculation common in NAND flash.
+    """Correct Hamming ECC for 256 bytes of data (standard bit packing).
 
     Args:
         data: Input data bytes (possibly corrupted)
@@ -522,29 +520,30 @@ def _correct_hamming_256(data: bytes, data_ecc: bytes, calculated_ecc: bytes) ->
         bit = 0
         byte = 0
 
+        # Standard layout: d0=LP3..LP0, d1=LP7..LP4, d2=CP5..CP0
         if (d1 & 0x80):
-            byte |= 0x80
+            byte |= 0x80   # LP7
         if (d1 & 0x20):
-            byte |= 0x40
+            byte |= 0x40   # LP6
         if (d1 & 0x08):
-            byte |= 0x20
+            byte |= 0x20   # LP5
         if (d1 & 0x02):
-            byte |= 0x10
+            byte |= 0x10   # LP4
         if (d0 & 0x80):
-            byte |= 0x08
+            byte |= 0x08   # LP3
         if (d0 & 0x20):
-            byte |= 0x04
+            byte |= 0x04   # LP2
         if (d0 & 0x08):
-            byte |= 0x02
+            byte |= 0x02   # LP1
         if (d0 & 0x02):
-            byte |= 0x01
+            byte |= 0x01   # LP0
 
         if (d2 & 0x80):
-            bit |= 0x04
+            bit |= 0x04    # CP5
         if (d2 & 0x20):
-            bit |= 0x02
+            bit |= 0x02    # CP3
         if (d2 & 0x08):
-            bit |= 0x01
+            bit |= 0x01    # CP1
 
         corrected[byte] ^= (1 << bit) & 0xff
 
