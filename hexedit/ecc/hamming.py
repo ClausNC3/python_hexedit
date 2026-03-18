@@ -611,18 +611,23 @@ def correct_hamming_errors(data: bytes, ecc: bytes, ecc_type) -> tuple[bytes, in
             corrected_data += temp_data
             corrected_ecc += temp_ecc
             total_corrections += temp_corrections
+            if temp_corrections == -1:
+                return bytes(corrected_data), temp_corrections
     elif ecc_type in (ECCType.HAMMING512_NAND, ECCType.HAMMING512_NAND_INVERTED):
         for i in range(0, len(data), 512):
             temp_data, temp_ecc, temp_corrections = _correct_hamming_512_nand(data[i:i+512], working_ecc[int(i/512)*3:(int(i/512)*3)+3], _calculate_hamming_512_nand(data[i:i+512]))
             corrected_data += temp_data
             corrected_ecc += temp_ecc
-            if(total_corrections != -1):
-                total_corrections += temp_corrections
+            total_corrections += temp_corrections
+            if temp_corrections == -1:
+                return bytes(corrected_data), temp_corrections
     elif ecc_type in (ECCType.HAMMING256, ECCType.HAMMING256_INVERTED):
         for i in range(0, len(data), 256):
             temp_data, temp_ecc, temp_corrections = _correct_hamming_256(data[i:i+256], working_ecc[int(i/256)*3:(int(i/256)*3)+3], _calculate_hamming_256(data[i:i+256]))
             corrected_data += temp_data
             corrected_ecc += temp_ecc
             total_corrections += temp_corrections
+            if temp_corrections == -1:
+                return bytes(corrected_data), temp_corrections
 
     return bytes(corrected_data), total_corrections
